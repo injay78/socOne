@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+
+# Django
+*.sqlite3
+media/
+staticfiles/
+backend/perf-results/
+
+# Environment
+.env
+.env.local
+/deploy/asp-compose/compose.override.yaml
+
+# Local deployment runtime state (created by deploy/asp-compose/scripts/init.sh)
+/deploy/asp-compose/certs/
+/deploy/asp-compose/custom/
+/deploy/asp-compose/logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node
+node_modules/
+
+# Local git worktrees
+.worktrees/
+/asf-doc/
+#/asp-marketplace/
+
+# OS
+.DS_Store
+Thumbs.db
+
+.claude/*
+.asp/

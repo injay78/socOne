@@ -1,6 +1,11 @@
 import {Tabs} from 'antd'
-import {Activity, Bot, DatabaseSearch, FileSearch, Network, Radar, SlidersHorizontal, Tags, UsersRound} from 'lucide-react'
+import {Activity, Bell, Bot, DatabaseSearch, FileSearch, MonitorCheck, Network, Palette, Radar, ShieldQuestionMark, SlidersHorizontal, Tags, UsersRound, Workflow} from 'lucide-react'
+import PlaybookAutomationSettings from './PlaybookAutomationSettings'
 import AuditLogsSettings from './AuditLogsSettings'
+import BrandingSettings from './BrandingSettings'
+import EDRSettings from './EDRSettings'
+import IocVerificationSettings from './IocVerificationSettings'
+import NotificationSettings from './NotificationSettings'
 import LDAPSettings from './LDAPSettings'
 import LLMProviderSettings from './LLMProviderSettings'
 import RuntimeSettings from './RuntimeSettings'
@@ -33,9 +38,29 @@ export default function SystemSettings() {
             children: <ThreatIntelligenceSettings />,
           },
           {
+            key: 'ioc-verification',
+            label: <IconTabLabel icon={ShieldQuestionMark}>IOC Verify</IconTabLabel>,
+            children: <IocVerificationSettings />,
+          },
+          {
+            key: 'playbook-automation',
+            label: <IconTabLabel icon={Workflow}>Playbook Automation</IconTabLabel>,
+            children: <PlaybookAutomationSettings />,
+          },
+          {
             key: 'siem',
             label: <IconTabLabel icon={DatabaseSearch}>SIEM</IconTabLabel>,
             children: <SIEMSettings />,
+          },
+          {
+            key: 'edr',
+            label: <IconTabLabel icon={MonitorCheck}>EDR</IconTabLabel>,
+            children: <EDRSettings />,
+          },
+          {
+            key: 'notifications',
+            label: <IconTabLabel icon={Bell}>Notifications</IconTabLabel>,
+            children: <NotificationSettings />,
           },
           {
             key: 'ldap',
@@ -46,6 +71,11 @@ export default function SystemSettings() {
             key: 'runtime',
             label: <IconTabLabel icon={SlidersHorizontal}>Runtime</IconTabLabel>,
             children: <RuntimeSettings />,
+          },
+          {
+            key: 'branding',
+            label: <IconTabLabel icon={Palette}>Branding</IconTabLabel>,
+            children: <BrandingSettings />,
           },
           {
             key: 'workers',

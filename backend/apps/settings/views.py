@@ -5,7 +5,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import permissions, status, views, viewsets
+from rest_framework import parsers, permissions, status, views, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
@@ -17,34 +17,153 @@ from apps.common.advanced_filters import AdvancedFilterBackend
 from apps.common.operation_timeout import OperationTimeoutError, run_with_operation_timeout
 from apps.common.worker_health import get_worker_health_states
 from .models import (
+    BrandingConfig,
     CustomVariable,
+    EdrTrellixConfig,
+    IocVerificationConfig,
+    McpServerConfig,
+    TelegramNotificationConfig,
     LdapConfig,
     LLMProviderConfig,
     RuntimeConfig,
     SiemElkConfig,
+    SiemQRadarConfig,
     SiemSplunkConfig,
+    PlaybookAutomationConfig,
+    PlaybookAutomationRule,
     ThreatIntelAlienVaultOTXConfig,
     ThreatIntelOpenCTIConfig,
+    ThreatIntelVirusTotalConfig,
 )
 from .runtime_config import invalidate
 from .serializers import (
+    PlaybookAutomationConfigSerializer,
+    PlaybookAutomationRuleSerializer,
+    BrandingConfigSerializer,
     CustomVariableSerializer,
+    EdrTrellixConfigSerializer,
+    IocVerificationConfigSerializer,
+    McpServerConfigSerializer,
+    TelegramNotificationConfigSerializer,
     LLMProviderConfigSerializer,
     LdapConfigSerializer,
     SiemElkConfigSerializer,
+    SiemQRadarConfigSerializer,
     SiemSplunkConfigSerializer,
     RuntimeConfigSerializer,
     ThreatIntelAlienVaultOTXConfigSerializer,
     ThreatIntelOpenCTIConfigSerializer,
+    ThreatIntelVirusTotalConfigSerializer,
 )
-from .services import test_alienvault_otx_config, test_elk_config, test_llm_provider, test_opencti_config, test_splunk_config
+from .services import (
+    test_alienvault_otx_config,
+    test_elk_config,
+    test_llm_provider,
+    test_opencti_config,
+    test_qradar_config,
+    test_splunk_config,
+    test_trellix_config,
+    test_virustotal_config,
+)
 
 logger = logging.getLogger(__name__)
 
-LLM_AUDIT_FIELDS = ("name", "base_url", "model", "proxy", "tags", "enabled", "priority", "api_key")
+LLM_AUDIT_FIELDS = (
+    "name",
+    "base_url",
+    "model",
+    "fallback_models",
+    "proxy",
+    "tags",
+    "enabled",
+    "priority",
+    "api_key",
+    "supports_json_mode",
+    "supports_tool_calling",
+    "context_window_tokens",
+    "max_output_tokens",
+    "request_timeout_seconds",
+    "max_retries",
+)
 OTX_AUDIT_FIELDS = ("enabled", "api_key", "base_url", "proxy")
 OPENCTI_AUDIT_FIELDS = ("enabled", "url", "token", "ssl_verify", "proxy")
+VIRUSTOTAL_AUDIT_FIELDS = ("enabled", "api_keys", "base_url", "proxy", "timeout_seconds", "requests_per_minute_per_key")
 SPLUNK_AUDIT_FIELDS = ("host", "port", "username", "password", "scheme", "verify")
+QRADAR_AUDIT_FIELDS = (
+    "enabled",
+    "base_url",
+    "api_token",
+    "api_version",
+    "verify_ssl",
+    "ca_bundle_path",
+    "search_timeout_seconds",
+    "metadata_timeout_seconds",
+    "max_rows",
+    "default_window_minutes",
+    "max_window_hours",
+    "max_concurrent_searches",
+    "allow_write",
+    "poll_enabled",
+    "poll_interval_seconds",
+)
+TRELLIX_AUDIT_FIELDS = (
+    "enabled",
+    "iam_token_url",
+    "api_base_url",
+    "client_id",
+    "client_secret",
+    "tenant_id",
+    "read_scopes",
+    "action_scopes",
+    "timeout_seconds",
+    "rate_limit_per_minute",
+    "max_rows",
+    "max_window_hours",
+    "allow_containment",
+    "poll_enabled",
+    "poll_interval_seconds",
+)
+TELEGRAM_AUDIT_FIELDS = (
+    "enabled",
+    "bot_token",
+    "asp_base_url",
+    "retry_limit",
+    "rate_limit_per_minute",
+    "aggregation_window_seconds",
+    "aggregation_threshold",
+    "quiet_hours_start",
+    "quiet_hours_end",
+)
+MCP_AUDIT_FIELDS = (
+    "name",
+    "transport",
+    "url_or_command",
+    "auth_header",
+    "token",
+    "timeout_seconds",
+    "allowed_tools",
+    "enabled",
+)
+IOC_AUDIT_FIELDS = (
+    "enabled",
+    "internal_sources_only",
+    "reputable_domains",
+    "internal_networks",
+    "internal_domains",
+    "max_web_results",
+    "rate_limit_per_minute",
+    "ttl_ip_hours",
+    "ttl_domain_hours",
+    "ttl_url_hours",
+    "ttl_hash_hours",
+    "ttl_email_hours",
+)
+BRANDING_AUDIT_FIELDS = (
+    "product_name",
+    "product_short_name",
+    "primary_color",
+    "accent_color",
+)
 ELK_AUDIT_FIELDS = (
     "host",
     "api_key",
@@ -67,6 +186,8 @@ RUNTIME_AUDIT_FIELDS = (
     "prompt_language",
     "stream_maxlen",
     "dashboard_refresh_interval_seconds",
+    "anonymization_enabled",
+    "anonymization_fields",
 )
 CUSTOM_VARIABLE_AUDIT_FIELDS = (
     "key",
@@ -422,6 +543,96 @@ class ThreatIntelOpenCTITestView(views.APIView):
         return Response(result, status=status.HTTP_200_OK)
 
 
+class ThreatIntelVirusTotalConfigView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get_serializer_context(self):
+        return {
+            "reveal_secrets": self.request.query_params.get("reveal_secrets") in {"1", "true", "yes"},
+        }
+
+    def get(self, request):
+        instance = ThreatIntelVirusTotalConfig.get_current()
+        if self.get_serializer_context().get("reveal_secrets"):
+            _write_audit(instance, "reveal", request.user, metadata={"fields": ["api_keys"]})
+        serializer = ThreatIntelVirusTotalConfigSerializer(instance, context=self.get_serializer_context())
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def patch(self, request):
+        instance = ThreatIntelVirusTotalConfig.get_current()
+        before = _snapshot(instance, VIRUSTOTAL_AUDIT_FIELDS)
+        serializer = ThreatIntelVirusTotalConfigSerializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        changes = _audit_changes(before, _snapshot(instance, VIRUSTOTAL_AUDIT_FIELDS), {"api_keys"})
+        if changes:
+            _write_audit(instance, "update", request.user, changes=changes)
+        transaction.on_commit(lambda: invalidate("virustotal"))
+        return Response(ThreatIntelVirusTotalConfigSerializer(instance).data)
+
+
+class ThreatIntelVirusTotalTestView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        instance = ThreatIntelVirusTotalConfig.get_current()
+        serializer = ThreatIntelVirusTotalConfigSerializer(instance, data=request.data or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        config = _snapshot(instance, VIRUSTOTAL_AUDIT_FIELDS)
+        config.update(serializer.validated_data)
+        result = _run_config_test("settings.threat_intel.virustotal.test", test_virustotal_config, config)
+        _write_audit(instance, "test", request.user, metadata={"success": result["success"]})
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class PlaybookAutomationConfigView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        instance = PlaybookAutomationConfig.get_current()
+        return Response(PlaybookAutomationConfigSerializer(instance).data)
+
+    @transaction.atomic
+    def patch(self, request):
+        instance = PlaybookAutomationConfig.get_current()
+        before = _snapshot(instance, ("enabled", "max_auto_runs_per_case"))
+        serializer = PlaybookAutomationConfigSerializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        changes = _audit_changes(before, _snapshot(instance, ("enabled", "max_auto_runs_per_case")), set())
+        if changes:
+            _write_audit(instance, "update", request.user, changes=changes)
+        transaction.on_commit(lambda: invalidate("playbook_automation"))
+        return Response(PlaybookAutomationConfigSerializer(instance).data)
+
+
+class PlaybookAutomationRuleViewSet(viewsets.ModelViewSet):
+    queryset = PlaybookAutomationRule.objects.all()
+    serializer_class = PlaybookAutomationRuleSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    filter_backends = (DjangoFilterBackend, SearchFilter, OrderingFilter)
+    filterset_fields = ("enabled",)
+    search_fields = ("name", "playbook_name")
+    ordering = ("priority", "name")
+    pagination_class = None
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        _write_audit(instance, "create", self.request.user)
+        transaction.on_commit(lambda: invalidate("playbook_automation"))
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        _write_audit(instance, "update", self.request.user)
+        transaction.on_commit(lambda: invalidate("playbook_automation"))
+
+    def perform_destroy(self, instance):
+        _write_audit(instance, "delete", self.request.user)
+        instance.delete()
+        transaction.on_commit(lambda: invalidate("playbook_automation"))
+
+
 def _singleton_view_context(request):
     return {
         "reveal_secrets": request.query_params.get("reveal_secrets") in {"1", "true", "yes"},
@@ -595,3 +806,206 @@ class WorkerHealthView(views.APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return Response({"results": results})
+
+
+class SiemQRadarConfigView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        instance = SiemQRadarConfig.get_current()
+        if _singleton_view_context(request)["reveal_secrets"]:
+            _write_audit(instance, "reveal", request.user, metadata={"fields": ["api_token"]})
+        serializer = SiemQRadarConfigSerializer(instance, context=_singleton_view_context(request))
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def patch(self, request):
+        return _singleton_patch(
+            SiemQRadarConfig.get_current(),
+            SiemQRadarConfigSerializer,
+            request,
+            QRADAR_AUDIT_FIELDS,
+            {"api_token"},
+            "qradar",
+        )
+
+
+class SiemQRadarTestView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        instance = SiemQRadarConfig.get_current()
+        serializer = SiemQRadarConfigSerializer(instance, data=request.data or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        config = _snapshot(instance, QRADAR_AUDIT_FIELDS)
+        config.update(serializer.validated_data)
+        result = _run_config_test("settings.siem.qradar.test", test_qradar_config, config)
+        _write_audit(instance, "test", request.user, metadata={"success": result["success"]})
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class EdrTrellixConfigView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        instance = EdrTrellixConfig.get_current()
+        if _singleton_view_context(request)["reveal_secrets"]:
+            _write_audit(instance, "reveal", request.user, metadata={"fields": ["client_secret"]})
+        serializer = EdrTrellixConfigSerializer(instance, context=_singleton_view_context(request))
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def patch(self, request):
+        return _singleton_patch(
+            EdrTrellixConfig.get_current(),
+            EdrTrellixConfigSerializer,
+            request,
+            TRELLIX_AUDIT_FIELDS,
+            {"client_secret"},
+            "trellix",
+        )
+
+
+class EdrTrellixTestView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        instance = EdrTrellixConfig.get_current()
+        serializer = EdrTrellixConfigSerializer(instance, data=request.data or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        config = _snapshot(instance, TRELLIX_AUDIT_FIELDS)
+        config.update(serializer.validated_data)
+        result = _run_config_test("settings.edr.trellix.test", test_trellix_config, config)
+        _write_audit(instance, "test", request.user, metadata={"success": result["success"]})
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class TelegramNotificationConfigView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        instance = TelegramNotificationConfig.get_current()
+        serializer = TelegramNotificationConfigSerializer(instance, context=_singleton_view_context(request))
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def patch(self, request):
+        return _singleton_patch(
+            TelegramNotificationConfig.get_current(),
+            TelegramNotificationConfigSerializer,
+            request,
+            TELEGRAM_AUDIT_FIELDS,
+            {"bot_token"},
+            "notifications",
+        )
+
+
+class McpServerConfigViewSet(viewsets.ModelViewSet):
+    queryset = McpServerConfig.objects.all()
+    serializer_class = McpServerConfigSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    filter_backends = (DjangoFilterBackend, SearchFilter, OrderingFilter)
+    filterset_fields = ("enabled", "transport")
+    search_fields = ("name", "url_or_command")
+    ordering_fields = ("name", "created_at")
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        _write_audit(instance, "create", self.request.user, changes=_audit_changes(None, _snapshot(instance, MCP_AUDIT_FIELDS), {"token"}))
+        transaction.on_commit(lambda: invalidate("mcp"))
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        before = _snapshot(instance, MCP_AUDIT_FIELDS)
+        instance = serializer.save()
+        changes = _audit_changes(before, _snapshot(instance, MCP_AUDIT_FIELDS), {"token"})
+        if changes:
+            _write_audit(instance, "update", self.request.user, changes=changes)
+        transaction.on_commit(lambda: invalidate("mcp"))
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        _write_audit(instance, "delete", self.request.user, changes=_audit_changes(_snapshot(instance, MCP_AUDIT_FIELDS), {}, {"token"}))
+        instance.delete()
+        transaction.on_commit(lambda: invalidate("mcp"))
+
+    @action(detail=True, methods=["post"], url_path="health")
+    def health(self, request, pk=None):
+        from integrations.mcp.client import McpClient
+
+        instance = self.get_object()
+        client = McpClient({
+            "name": instance.name,
+            "transport": instance.transport,
+            "url_or_command": instance.url_or_command,
+            "auth_header": instance.auth_header,
+            "token": instance.token,
+            "timeout_seconds": instance.timeout_seconds,
+            "allowed_tools": instance.allowed_tools or [],
+        })
+        result = _run_config_test("settings.mcp.health", lambda _config: client.health_check(), {})
+        _write_audit(instance, "test", request.user, metadata={"healthy": result.get("healthy")})
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class IocVerificationConfigView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        instance = IocVerificationConfig.get_current()
+        serializer = IocVerificationConfigSerializer(instance, context=_singleton_view_context(request))
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def patch(self, request):
+        return _singleton_patch(
+            IocVerificationConfig.get_current(),
+            IocVerificationConfigSerializer,
+            request,
+            IOC_AUDIT_FIELDS,
+            set(),
+            "ioc",
+        )
+
+
+class BrandingConfigView(views.APIView):
+    """Read is public: the login screen renders before anyone authenticates."""
+
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+
+    def get_permissions(self):
+        request = getattr(self, "request", None)
+        if request is None or request.method == "GET":
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated(), IsAdmin()]
+
+    def get_authenticators(self):
+        request = getattr(self, "request", None)
+        if request is not None and request.method == "GET":
+            return []
+        return super().get_authenticators()
+
+    def get(self, request):
+        from .runtime_config import get_branding_config
+
+        return Response(get_branding_config())
+
+    @transaction.atomic
+    def patch(self, request):
+        instance = BrandingConfig.get_current()
+        before = _snapshot(instance, BRANDING_AUDIT_FIELDS)
+        serializer = BrandingConfigSerializer(instance, data=request.data or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = serializer.save()
+
+        changes = _audit_changes(before, _snapshot(updated, BRANDING_AUDIT_FIELDS), set())
+        if changes:
+            _write_audit(updated, "update", request.user, changes=changes)
+        transaction.on_commit(lambda: invalidate("branding"))
+
+        from .runtime_config import get_branding_config
+
+        invalidate("branding")
+        return Response(get_branding_config(), status=status.HTTP_200_OK)

@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from apps.webhook.service import (
     WebhookRedisError,
     handle_kibana_webhook,
+    handle_qradar_webhook,
     handle_splunk_webhook,
 )
 
@@ -44,5 +45,21 @@ class KibanaWebhookView(APIView):
             return Response({"detail": INVALID_WEBHOOK_PAYLOAD_DETAIL}, status=status.HTTP_400_BAD_REQUEST)
         except WebhookRedisError:
             logger.exception("Failed to process Kibana webhook")
+            return Response({"detail": WEBHOOK_STREAM_UNAVAILABLE_DETAIL}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(result.model_dump(), status=status.HTTP_200_OK)
+
+
+class QRadarWebhookView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        try:
+            result = handle_qradar_webhook(request.data)
+        except (ValidationError, ValueError):
+            logger.info("Invalid QRadar webhook payload", exc_info=True)
+            return Response({"detail": INVALID_WEBHOOK_PAYLOAD_DETAIL}, status=status.HTTP_400_BAD_REQUEST)
+        except WebhookRedisError:
+            logger.exception("Failed to process QRadar webhook")
             return Response({"detail": WEBHOOK_STREAM_UNAVAILABLE_DETAIL}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(result.model_dump(), status=status.HTTP_200_OK)

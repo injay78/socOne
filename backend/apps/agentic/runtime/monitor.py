@@ -1,3 +1,5 @@
+import logging
+
 from django.utils import timezone
 
 from apps.agentic.analysis.analysis import run_case_analysis
@@ -13,6 +15,8 @@ from apps.agentic.services.playbooks import (
     mark_playbook_failed,
     mark_playbook_success,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def run_playbook_once(*, scripts_dir=None):
@@ -57,3 +61,17 @@ def run_case_analysis_once():
     except Exception as exc:
         fail_case_analysis_job(running_job, str(exc))
     return True
+
+
+def _run_triage(running_job):
+    """Triage runs inside the same job as the investigation.
+
+    A triage failure must not discard a completed investigation, so it is
+    logged and the job still completes.
+    """
+    from apps.agentic.triage.service import run_case_triage
+
+    try:
+        run_case_triage(running_job.case, trigger=running_job.trigger or "analysis")
+    except Exception:
+        logger.exception("AI triage failed for case %s", running_job.case_id)

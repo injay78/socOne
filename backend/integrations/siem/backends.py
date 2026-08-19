@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -36,10 +38,12 @@ from integrations.siem.query_builders import (
 )
 from integrations.siem.registry import get_default_agg_fields
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(slots=True)
 class BackendQueryResult:
-    backend: Literal["ELK", "Splunk"]
+    backend: Literal["ELK", "Splunk", "QRadar"]
     index_name: str
     total_hits: int
     aggregation_fields: list[str]
@@ -64,7 +68,7 @@ def _extract_index_distribution(response: dict, index_name: str | None) -> dict[
 
 
 class ELKQueryBackend:
-    backend_name: Literal["ELK", "Splunk"] = "ELK"
+    backend_name: Literal["ELK", "Splunk", "QRadar"] = "ELK"
 
     @classmethod
     def execute_structured_query(cls, input_data: AdaptiveQueryInput) -> BackendQueryResult:
@@ -200,7 +204,7 @@ class ELKQueryBackend:
 
 
 class SplunkQueryBackend:
-    backend_name: Literal["ELK", "Splunk"] = "Splunk"
+    backend_name: Literal["ELK", "Splunk", "QRadar"] = "Splunk"
 
     @classmethod
     def execute_structured_query(cls, input_data: AdaptiveQueryInput) -> BackendQueryResult:
@@ -353,3 +357,163 @@ def _normalize_spl_query(query: str) -> str:
     if re.match(r"^(index|sourcetype|source|host)=", stripped, re.IGNORECASE):
         return f"search {stripped}"
     return stripped
+
+
+class QRadarQueryBackend:
+    backend_name: Literal["ELK", "Splunk", "QRadar"] = "QRadar"
+
+    @classmethod
+    def _source(cls, index_name):
+        return "flows" if str(index_name or "").lower().endswith("flows") else "events"
+
+    @classmethod
+    def _run(cls, aql, *, limit=None):
+        from apps.settings.runtime_config import get_qradar_config
+        from integrations.siem.aql_guard import guard_aql_with_config
+        from integrations.siem.audit import record_aql_execution
+        from integrations.siem.clients import get_qradar_client
+
+        config = get_qradar_config()
+        guarded = guard_aql_with_config(aql, config)
+        query = guarded.raise_for_rejection()
+        max_rows = min(limit or config["max_rows"], config["max_rows"])
+
+        started = time.perf_counter()
+        rows = get_qradar_client().run_aql(query, max_rows=max_rows)
+        record_aql_execution(
+            query=query,
+            rewrites=guarded.rewrites,
+            row_count=len(rows),
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+        return rows
+
+    @classmethod
+    def execute_structured_query(cls, input_data: AdaptiveQueryInput) -> BackendQueryResult:
+        source = cls._source(input_data.index_name)
+        conditions = [
+            f"{input_data.time_field} >= '{input_data.time_range_start}'",
+            f"{input_data.time_field} < '{input_data.time_range_end}'",
+        ]
+        for field, value in input_data.filters.items():
+            if isinstance(value, list):
+                joined = " or ".join(f"{field} = '{item}'" for item in value)
+                conditions.append(f"({joined})")
+            else:
+                conditions.append(f"{field} = '{value}'")
+
+        aggregation_fields = input_data.aggregation_fields or get_default_agg_fields(input_data.index_name)
+        aql = f"SELECT * FROM {source} WHERE {' AND '.join(conditions)}"
+        records = cls._run(aql)
+
+        return BackendQueryResult(
+            backend=cls.backend_name,
+            index_name=input_data.index_name,
+            total_hits=len(records),
+            aggregation_fields=aggregation_fields,
+            statistics=_qradar_stats(records, aggregation_fields),
+            raw_records=records,
+        )
+
+    @classmethod
+    def execute_keyword_query(cls, input_data: KeywordSearchInput) -> BackendQueryResult:
+        keywords = [input_data.keyword] if isinstance(input_data.keyword, str) else list(input_data.keyword)
+        source = cls._source(input_data.index_name)
+        conditions = [
+            f"{input_data.time_field} >= '{input_data.time_range_start}'",
+            f"{input_data.time_field} < '{input_data.time_range_end}'",
+        ]
+        for keyword in keywords:
+            escaped = str(keyword).replace("'", "''")
+            conditions.append(f"TEXT SEARCH '{escaped}'")
+
+        aggregation_fields = get_default_agg_fields(input_data.index_name) if input_data.index_name else []
+        records = cls._run(f"SELECT * FROM {source} WHERE {' AND '.join(conditions)}")
+
+        return BackendQueryResult(
+            backend=cls.backend_name,
+            index_name=input_data.index_name or source,
+            total_hits=len(records),
+            aggregation_fields=aggregation_fields,
+            statistics=_qradar_stats(records, aggregation_fields),
+            raw_records=records,
+        )
+
+    @classmethod
+    def discover_keyword_hit_indices(cls, input_data: KeywordSearchInput, indices: list[str]) -> list[str]:
+        hits = []
+        for index_name in indices:
+            probe = KeywordSearchInput(
+                keyword=input_data.keyword,
+                time_range_start=input_data.time_range_start,
+                time_range_end=input_data.time_range_end,
+                time_field=input_data.time_field,
+                index_name=index_name,
+            )
+            try:
+                if cls.execute_keyword_query(probe).total_hits > 0:
+                    hits.append(index_name)
+            except Exception:
+                logger.exception("QRadar keyword probe failed for index %s", index_name)
+        return hits
+
+    @classmethod
+    def discover_index_fields(cls, index_name: str, time_start: str | None = None,
+                              time_end: str | None = None, doc_limit: int = 10000,
+                              max_samples: int = 20) -> DiscoverIndexFieldsOutput:
+        if not time_start or not time_end:
+            raise ValueError("time_start and time_end are required for QRadar field discovery")
+
+        source = cls._source(index_name)
+        records = cls._run(
+            f"SELECT * FROM {source} "
+            f"WHERE starttime >= '{time_start}' AND starttime < '{time_end}'",
+            limit=min(doc_limit, 1000),
+        )
+
+        samples: dict[str, list] = {}
+        for record in records:
+            for name, value in (record or {}).items():
+                if value is None:
+                    continue
+                values = samples.setdefault(name, [])
+                text = str(value)
+                if len(values) < max_samples and text not in values:
+                    values.append(text)
+
+        return DiscoverIndexFieldsOutput(
+            backend=cls.backend_name,
+            index_name=index_name,
+            total_fields=len(samples),
+            fields=[
+                DiscoveredFieldInfo(name=name, type="keyword", sample_values=values)
+                for name, values in sorted(samples.items())
+            ],
+        )
+
+    @classmethod
+    def execute_aql_query(cls, input_data) -> BackendQueryResult:
+        records = cls._run(input_data.query, limit=input_data.limit)
+        return BackendQueryResult(
+            backend=cls.backend_name,
+            index_name=input_data.index_name or "events",
+            total_hits=len(records),
+            aggregation_fields=[],
+            statistics=[],
+            raw_records=records,
+        )
+
+
+def _qradar_stats(records, aggregation_fields):
+    statistics = []
+    for field in aggregation_fields or []:
+        counts: dict = {}
+        for record in records:
+            value = (record or {}).get(field)
+            if value is None:
+                continue
+            counts[str(value)] = counts.get(str(value), 0) + 1
+        if counts:
+            top = dict(sorted(counts.items(), key=lambda item: item[1], reverse=True)[:10])
+            statistics.append(FieldStat(field_name=field, top_values=top))
+    return statistics

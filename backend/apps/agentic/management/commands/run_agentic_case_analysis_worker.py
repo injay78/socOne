@@ -7,7 +7,7 @@ DEFAULT_INTERVAL_SECONDS = 3.0
 
 
 class Command(BaseCommand):
-    help = "Run the Agentic SOC case analysis worker."
+    help = "Run the SOC case analysis worker."
 
     def add_arguments(self, parser):
         add_worker_arguments(parser, interval_help="Seconds to sleep when no case analysis job is pending.")

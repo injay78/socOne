@@ -153,6 +153,65 @@ def create_pending_playbook_run(*, name, case, user=None, user_input=""):
     return playbook
 
 
+CASE_SEVERITY_ORDER = {"Informational": 0, "Low": 1, "Medium": 2, "High": 3, "Critical": 4}
+
+
+def schedule_automatic_playbooks(case):
+    """Queue playbook runs for enabled automation rules matching this case.
+
+    Deterministic keyword matching over case title + alert rule names; failures
+    are swallowed so automation can never break the alert ingestion pipeline.
+    """
+    from apps.settings.runtime_config import get_playbook_automation_config
+
+    created = []
+    try:
+        config = get_playbook_automation_config()
+        if not config["enabled"] or not config["rules"]:
+            return created
+
+        existing_names = set(Playbook.objects.filter(case=case).values_list("name", flat=True))
+        budget = max(0, config["max_auto_runs_per_case"] - Playbook.objects.filter(case=case).count())
+        if budget <= 0:
+            return created
+
+        parts = [case.title or "", case.description or ""]
+        for rule_name, alert_title in case.alerts.values_list("rule_name", "title"):
+            parts.append(rule_name or "")
+            parts.append(alert_title or "")
+        haystack = " ".join(parts).lower()
+        case_severity_rank = CASE_SEVERITY_ORDER.get(str(case.severity), 0)
+
+        known_names = {item["name"] for item in list_playbook_definitions()}
+
+        for rule in config["rules"]:
+            if budget <= 0:
+                break
+            playbook_name = rule["playbook_name"]
+            if playbook_name in existing_names:
+                continue
+            if rule.get("fallback") and (created or existing_names):
+                continue
+            if rule["min_severity"] and case_severity_rank < CASE_SEVERITY_ORDER.get(rule["min_severity"], 0):
+                continue
+            if rule["keywords"] and not any(keyword in haystack for keyword in rule["keywords"]):
+                continue
+            if playbook_name not in known_names:
+                logger.warning("Automation rule %s references unknown playbook %r", rule["name"], playbook_name)
+                continue
+            try:
+                run = create_pending_playbook_run(name=playbook_name, case=case)
+            except Exception:
+                logger.exception("Failed to schedule automatic playbook %r for case %s", playbook_name, case.case_id)
+                continue
+            created.append(run)
+            existing_names.add(playbook_name)
+            budget -= 1
+    except Exception:
+        logger.exception("Playbook automation failed for case %s", getattr(case, "case_id", case))
+    return created
+
+
 @transaction.atomic
 def claim_pending_playbook_run():
     playbook = (
@@ -239,7 +298,7 @@ def recover_orphaned_playbook_runs():
     with transaction.atomic():
         orphaned_runs = list(
             Playbook.objects
-            .select_for_update()
+            .select_for_update(of=("self",))
             .select_related("user", "case")
             .filter(job_status=PlaybookJobStatus.RUNNING)
         )

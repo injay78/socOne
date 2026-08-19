@@ -1,18 +1,24 @@
+import base64
 import logging
 import ipaddress
 import re
+import time
 from urllib.parse import quote
 
 import httpx
+from django.core.cache import caches
 from pycti import OpenCTIApiClient
 
 from apps.artifacts.models import ArtifactType
-from apps.settings.runtime_config import get_opencti_config, get_otx_config
+from apps.settings.runtime_config import get_opencti_config, get_otx_config, get_virustotal_config
 from integrations.threat_intel.models import TIProviderResult
 
 MOCK_PROVIDER_NAME = "MockTIProvider"
 OTX_PROVIDER_NAME = "AlienVaultOTX"
 OPENCTI_PROVIDER_NAME = "OpenCTI"
+VIRUSTOTAL_PROVIDER_NAME = "VirusTotal"
+VT_KEY_CURSOR_CACHE_KEY = "asp:vt:key_cursor"
+VT_RATE_CACHE_KEY = "asp:vt:rl:{index}:{minute}"
 MAX_PULSE_SUMMARIES = 5
 MAX_LIST_ITEMS = 12
 OPENCTI_SEARCH_LIMIT = 5
@@ -733,6 +739,223 @@ class AlienVaultOTXProvider(BaseThreatIntelProvider):
         return -score
 
 
+class VirusTotalProvider(BaseThreatIntelProvider):
+    """VirusTotal v3 lookups with a rotating API-key pool.
+
+    Keys are picked round-robin through a shared Redis counter so every worker
+    process advances the same cursor; a key that hits its per-minute ceiling or
+    returns 429/401 is skipped for the current minute and the next key is tried.
+    """
+
+    name = VIRUSTOTAL_PROVIDER_NAME
+
+    def __init__(self, *, api_keys=None, base_url=None, proxy=None, timeout_seconds=None, requests_per_minute_per_key=None, http_client=None):
+        config = get_virustotal_config()
+        self.api_keys = list(api_keys) if api_keys is not None else config["api_keys"]
+        self.base_url = (base_url or config["base_url"]).rstrip("/")
+        self.proxy = config["proxy"] if proxy is None else proxy
+        self.timeout_seconds = timeout_seconds or config["timeout_seconds"]
+        self.requests_per_minute_per_key = requests_per_minute_per_key or config["requests_per_minute_per_key"]
+        self.http_client = http_client
+
+    def query(self, indicator, *, artifact_type):
+        artifact_type = _artifact_type_value(artifact_type)
+        indicator = str(indicator or "").strip()
+        endpoint = self._endpoint_for(indicator, artifact_type)
+        if endpoint["error"]:
+            return TIProviderResult(
+                indicator=indicator,
+                indicator_type=endpoint["indicator_type"],
+                provider=self.name,
+                error=endpoint["error"],
+            )
+        if not self.api_keys:
+            return TIProviderResult(
+                indicator=indicator,
+                indicator_type=endpoint["indicator_type"],
+                provider=self.name,
+                error="VirusTotal API keys are not configured.",
+            )
+
+        response = self._request_json(endpoint["path"])
+        if response.get("error"):
+            return TIProviderResult(
+                indicator=indicator,
+                indicator_type=endpoint["indicator_type"],
+                provider=self.name,
+                raw={"error": response["error"]},
+                error=response["error"],
+            )
+        return self._summarize(response, endpoint["indicator_type"], indicator)
+
+    def _endpoint_for(self, indicator, artifact_type):
+        if artifact_type == ArtifactType.IP_ADDRESS:
+            try:
+                ipaddress.ip_address(indicator)
+            except ValueError:
+                return {"path": "", "indicator_type": "ip", "error": "Invalid IP address."}
+            return {"path": f"/ip_addresses/{indicator}", "indicator_type": "ip", "error": None}
+
+        if artifact_type in {ArtifactType.HOSTNAME, ArtifactType.ENDPOINT}:
+            domain = indicator.lower().rstrip(".")
+            if not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)+", domain):
+                return {"path": "", "indicator_type": "domain", "error": "Invalid domain."}
+            return {"path": f"/domains/{domain}", "indicator_type": "domain", "error": None}
+
+        if artifact_type in {ArtifactType.URL_STRING, ArtifactType.UNIFORM_RESOURCE_LOCATOR}:
+            if not _looks_like_url(indicator):
+                return {"path": "", "indicator_type": "url", "error": "Invalid URL indicator."}
+            url_id = base64.urlsafe_b64encode(indicator.encode("utf-8")).decode("ascii").rstrip("=")
+            return {"path": f"/urls/{url_id}", "indicator_type": "url", "error": None}
+
+        if artifact_type in {ArtifactType.HASH, ArtifactType.FINGERPRINT}:
+            if not re.fullmatch(r"[a-fA-F0-9]{32}|[a-fA-F0-9]{40}|[a-fA-F0-9]{64}", indicator):
+                return {"path": "", "indicator_type": "file", "error": "Invalid hash. Must be MD5, SHA1, or SHA256 hex."}
+            return {"path": f"/files/{indicator.lower()}", "indicator_type": "file", "error": None}
+
+        return {
+            "path": "",
+            "indicator_type": artifact_type or "unknown",
+            "error": f"Unsupported artifact type for VirusTotal: {artifact_type}",
+        }
+
+    def _next_key_index(self):
+        cache = caches["default"]
+        try:
+            cursor = cache.incr(VT_KEY_CURSOR_CACHE_KEY)
+        except ValueError:
+            cache.set(VT_KEY_CURSOR_CACHE_KEY, 1, None)
+            cursor = 1
+        return cursor % len(self.api_keys)
+
+    def _key_available(self, index):
+        cache = caches["default"]
+        minute = int(time.time() // 60)
+        key = VT_RATE_CACHE_KEY.format(index=index, minute=minute)
+        try:
+            count = cache.incr(key)
+        except ValueError:
+            cache.set(key, 1, 120)
+            count = 1
+        return count <= self.requests_per_minute_per_key
+
+    def _exhaust_key(self, index):
+        minute = int(time.time() // 60)
+        caches["default"].set(
+            VT_RATE_CACHE_KEY.format(index=index, minute=minute),
+            self.requests_per_minute_per_key + 1,
+            120,
+        )
+
+    def _request_json(self, path):
+        url = f"{self.base_url}{path}"
+        start = self._next_key_index()
+        last_error = "VirusTotal request failed."
+        for offset in range(len(self.api_keys)):
+            index = (start + offset) % len(self.api_keys)
+            if not self._key_available(index):
+                last_error = "All VirusTotal API keys are rate limited."
+                continue
+            headers = {"accept": "application/json", "x-apikey": self.api_keys[index]}
+            try:
+                if self.http_client is None:
+                    client_kwargs = {"timeout": self.timeout_seconds}
+                    if self.proxy:
+                        client_kwargs["proxy"] = self.proxy
+                    with httpx.Client(**client_kwargs) as client:
+                        response = client.get(url, headers=headers)
+                else:
+                    response = self.http_client.get(url, headers=headers)
+                if response.status_code == 404:
+                    return {"error": "VirusTotal has no record for this indicator."}
+                if response.status_code in (401, 403):
+                    logger.warning("VirusTotal key #%s rejected (HTTP %s); rotating", index, response.status_code)
+                    self._exhaust_key(index)
+                    last_error = f"VirusTotal HTTP {response.status_code}."
+                    continue
+                if response.status_code == 429:
+                    logger.info("VirusTotal key #%s rate limited; rotating", index)
+                    self._exhaust_key(index)
+                    last_error = "VirusTotal HTTP 429."
+                    continue
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                logger.info("VirusTotal request returned HTTP %s", exc.response.status_code)
+                return {"error": f"VirusTotal HTTP {exc.response.status_code}."}
+            except httpx.HTTPError:
+                logger.exception("VirusTotal request failed")
+                last_error = "VirusTotal request failed."
+                continue
+            except ValueError:
+                logger.exception("VirusTotal response is not valid JSON")
+                return {"error": "VirusTotal response is not valid JSON."}
+        return {"error": last_error}
+
+    def _summarize(self, response, indicator_type, indicator):
+        attributes = (response.get("data") or {}).get("attributes") or {}
+        stats = attributes.get("last_analysis_stats") or {}
+        malicious = int(stats.get("malicious") or 0)
+        suspicious = int(stats.get("suspicious") or 0)
+        total_engines = sum(int(stats.get(key) or 0) for key in ("malicious", "suspicious", "harmless", "undetected"))
+
+        if malicious >= 5:
+            risk_level = "high"
+        elif malicious >= 2 or suspicious >= 5:
+            risk_level = "medium"
+        else:
+            risk_level = "low"
+
+        raw = {
+            "source": self.name,
+            "last_analysis_stats": stats,
+            "vt_detection_ratio": f"{malicious}/{total_engines}" if total_engines else "",
+            "reputation": attributes.get("reputation"),
+            "total_votes": attributes.get("total_votes"),
+            "tags": (attributes.get("tags") or [])[:MAX_LIST_ITEMS],
+        }
+        network_context = None
+        if indicator_type == "ip":
+            network_context = {
+                "country": attributes.get("country") or "",
+                "asn": attributes.get("asn"),
+                "as_owner": attributes.get("as_owner") or "",
+                "network": attributes.get("network") or "",
+            }
+        elif indicator_type == "domain":
+            creation_date = attributes.get("creation_date")
+            if creation_date:
+                raw["creation_date"] = creation_date
+                raw["domain_age_days"] = max(0, int((time.time() - float(creation_date)) // 86400))
+            raw["categories"] = attributes.get("categories") or {}
+            raw["registrar"] = attributes.get("registrar") or ""
+        elif indicator_type == "file":
+            raw["meaningful_name"] = attributes.get("meaningful_name") or ""
+            raw["type_description"] = attributes.get("type_description") or ""
+            raw["first_submission_date"] = attributes.get("first_submission_date")
+            raw["signature_info"] = {
+                key: value
+                for key, value in (attributes.get("signature_info") or {}).items()
+                if key in ("product", "verified", "signers", "copyright")
+            }
+            raw["popular_threat_classification"] = (attributes.get("popular_threat_classification") or {}).get("suggested_threat_label", "")
+        elif indicator_type == "url":
+            raw["final_url"] = attributes.get("last_final_url") or ""
+            raw["title"] = attributes.get("title") or ""
+
+        return TIProviderResult(
+            indicator=indicator,
+            indicator_type=indicator_type,
+            provider=self.name,
+            risk_level=risk_level,
+            reputation_score=attributes.get("reputation"),
+            is_malicious=malicious >= 3,
+            tags=[str(tag) for tag in (attributes.get("tags") or [])][:MAX_LIST_ITEMS],
+            network_context=network_context,
+            raw=raw,
+        )
+
+
 def _artifact_type_value(artifact_type):
     return artifact_type.value if hasattr(artifact_type, "value") else str(artifact_type)
 
@@ -792,4 +1015,7 @@ def get_providers():
     opencti_config = get_opencti_config()
     if opencti_config["enabled"] and opencti_config["url"] and opencti_config["token"]:
         providers[OPENCTI_PROVIDER_NAME] = OpenCTIProvider()
+    virustotal_config = get_virustotal_config()
+    if virustotal_config["enabled"] and virustotal_config["api_keys"]:
+        providers[VIRUSTOTAL_PROVIDER_NAME] = VirusTotalProvider()
     return providers

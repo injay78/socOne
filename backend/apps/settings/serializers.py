@@ -1,17 +1,27 @@
 import json
 import math
+import re
 
 from rest_framework import serializers
 
 from .models import (
+    BrandingConfig,
     CustomVariable,
+    EdrTrellixConfig,
+    IocVerificationConfig,
+    McpServerConfig,
+    TelegramNotificationConfig,
     LdapConfig,
     LLMProviderConfig,
     RuntimeConfig,
     SiemElkConfig,
+    SiemQRadarConfig,
     SiemSplunkConfig,
+    PlaybookAutomationConfig,
+    PlaybookAutomationRule,
     ThreatIntelAlienVaultOTXConfig,
     ThreatIntelOpenCTIConfig,
+    ThreatIntelVirusTotalConfig,
 )
 
 
@@ -196,12 +206,19 @@ class LLMProviderConfigSerializer(serializers.ModelSerializer):
             "name",
             "base_url",
             "model",
+            "fallback_models",
             "api_key",
             "api_key_configured",
             "proxy",
             "tags",
             "enabled",
             "priority",
+            "supports_json_mode",
+            "supports_tool_calling",
+            "context_window_tokens",
+            "max_output_tokens",
+            "request_timeout_seconds",
+            "max_retries",
             "created_at",
             "updated_at",
         )
@@ -210,10 +227,23 @@ class LLMProviderConfigSerializer(serializers.ModelSerializer):
             "api_key": {"required": False, "allow_blank": True, "trim_whitespace": False},
             "proxy": {"required": False, "allow_blank": True},
             "tags": {"required": False},
+            "fallback_models": {"required": False},
         }
 
     def get_api_key_configured(self, obj):
         return bool(obj.api_key)
+
+    def validate_fallback_models(self, value):
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Fallback models must be a list of model names.")
+        models = []
+        for item in value:
+            model = str(item).strip()
+            if model and model not in models:
+                models.append(model)
+        return models
 
     def validate_tags(self, value):
         if value in (None, ""):
@@ -291,6 +321,66 @@ class ThreatIntelAlienVaultOTXConfigSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         if not self.context.get("reveal_secrets"):
             data["api_key"] = ""
+        return data
+
+
+class ThreatIntelVirusTotalConfigSerializer(serializers.ModelSerializer):
+    api_keys_configured = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ThreatIntelVirusTotalConfig
+        fields = (
+            "enabled",
+            "api_keys",
+            "api_keys_configured",
+            "base_url",
+            "proxy",
+            "timeout_seconds",
+            "requests_per_minute_per_key",
+            "updated_at",
+        )
+        read_only_fields = ("api_keys_configured", "updated_at")
+        extra_kwargs = {
+            "proxy": {"required": False, "allow_blank": True},
+        }
+
+    def get_api_keys_configured(self, obj):
+        return len([key for key in (obj.api_keys or []) if str(key).strip()])
+
+    def validate_api_keys(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("api_keys must be a list of strings.")
+        keys = []
+        for item in value:
+            key = str(item or "").strip()
+            if not key:
+                continue
+            if key not in keys:
+                keys.append(key)
+        return keys
+
+    def validate_proxy(self, value):
+        proxy = (value or "").strip()
+        if proxy and not proxy.startswith(("http://", "https://", "socks4://", "socks5://")):
+            raise serializers.ValidationError("Proxy must start with http://, https://, socks4://, or socks5://.")
+        return proxy
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        api_keys = attrs.get("api_keys")
+        if api_keys is None and self.instance is not None:
+            api_keys = self.instance.api_keys
+        enabled = attrs.get("enabled")
+        if enabled is None and self.instance is not None:
+            enabled = self.instance.enabled
+        if enabled and not api_keys:
+            raise serializers.ValidationError({"api_keys": "At least one API key is required while enabled."})
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self.context.get("reveal_secrets"):
+            data["api_keys"] = []
         return data
 
 
@@ -564,14 +654,16 @@ class RuntimeConfigSerializer(serializers.ModelSerializer):
             "prompt_language",
             "stream_maxlen",
             "dashboard_refresh_interval_seconds",
+            "anonymization_enabled",
+            "anonymization_fields",
             "updated_at",
         )
         read_only_fields = ("updated_at",)
 
     def validate_prompt_language(self, value):
         language = (value or "").strip().lower()
-        if language not in {"en", "zh"}:
-            raise serializers.ValidationError("Prompt language must be en or zh.")
+        if language not in {"en", "zh", "vi"}:
+            raise serializers.ValidationError("Prompt language must be en, zh, or vi.")
         return language
 
     def validate_stream_maxlen(self, value):
@@ -583,3 +675,418 @@ class RuntimeConfigSerializer(serializers.ModelSerializer):
         if value not in self.DASHBOARD_REFRESH_INTERVALS:
             raise serializers.ValidationError("Dashboard refresh interval must be 300, 900, 1800, or 3600 seconds.")
         return value
+
+
+class SiemQRadarConfigSerializer(serializers.ModelSerializer):
+    api_token_configured = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SiemQRadarConfig
+        fields = (
+            "enabled",
+            "base_url",
+            "api_token",
+            "api_token_configured",
+            "api_version",
+            "verify_ssl",
+            "ca_bundle_path",
+            "search_timeout_seconds",
+            "metadata_timeout_seconds",
+            "max_rows",
+            "default_window_minutes",
+            "max_window_hours",
+            "max_concurrent_searches",
+            "allow_write",
+            "poll_enabled",
+            "poll_interval_seconds",
+            "updated_at",
+        )
+        read_only_fields = ("api_token_configured", "updated_at")
+        extra_kwargs = {
+            "api_token": {"required": False, "allow_blank": True, "trim_whitespace": False},
+            "ca_bundle_path": {"required": False, "allow_blank": True},
+        }
+
+    def get_api_token_configured(self, obj):
+        return bool(obj.api_token)
+
+    def validate_max_rows(self, value):
+        if value <= 0 or value > 100000:
+            raise serializers.ValidationError("Max rows must be between 1 and 100000.")
+        return value
+
+    def validate_max_window_hours(self, value):
+        if value <= 0 or value > 720:
+            raise serializers.ValidationError("Max window hours must be between 1 and 720.")
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        enabled = attrs.get("enabled")
+        if enabled is None and self.instance is not None:
+            enabled = self.instance.enabled
+        if enabled:
+            for field in ("base_url", "api_token"):
+                value = attrs.get(field)
+                if value is None and self.instance is not None:
+                    value = getattr(self.instance, field)
+                if not str(value or "").strip():
+                    raise serializers.ValidationError(
+                        {field: f"{field.replace('_', ' ').title()} is required when QRadar is enabled."}
+                    )
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self.context.get("reveal_secrets"):
+            data["api_token"] = ""
+        return data
+
+
+class EdrTrellixConfigSerializer(serializers.ModelSerializer):
+    client_secret_configured = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EdrTrellixConfig
+        fields = (
+            "enabled",
+            "iam_token_url",
+            "api_base_url",
+            "client_id",
+            "client_secret",
+            "client_secret_configured",
+            "tenant_id",
+            "read_scopes",
+            "action_scopes",
+            "timeout_seconds",
+            "rate_limit_per_minute",
+            "max_rows",
+            "max_window_hours",
+            "threat_severities",
+            "threat_score_min",
+            "ingest_lookback_days",
+            "allow_containment",
+            "poll_enabled",
+            "poll_interval_seconds",
+            "updated_at",
+        )
+        read_only_fields = ("client_secret_configured", "updated_at")
+        extra_kwargs = {
+            "client_secret": {"required": False, "allow_blank": True, "trim_whitespace": False},
+            "read_scopes": {"required": False},
+            "action_scopes": {"required": False},
+        }
+
+    def get_client_secret_configured(self, obj):
+        return bool(obj.client_secret)
+
+    def _validate_scopes(self, value):
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise serializers.ValidationError("Scopes must be a list of strings.")
+        return [item.strip() for item in value if item.strip()]
+
+    def validate_threat_severities(self, value):
+        if value in (None, ""):
+            return []
+        allowed = {"s0", "s1", "s2", "s3", "s4", "s5"}
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Severities must be a list.")
+        cleaned = [str(item).strip().lower() for item in value if str(item).strip()]
+        unknown = [item for item in cleaned if item not in allowed]
+        if unknown:
+            raise serializers.ValidationError(f"Unknown severity codes: {', '.join(unknown)}. Use s0 to s5.")
+        return cleaned
+
+    def validate_read_scopes(self, value):
+        return self._validate_scopes(value)
+
+    def validate_action_scopes(self, value):
+        return self._validate_scopes(value)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        enabled = attrs.get("enabled")
+        if enabled is None and self.instance is not None:
+            enabled = self.instance.enabled
+        if enabled:
+            for field in ("iam_token_url", "api_base_url", "client_id", "client_secret"):
+                value = attrs.get(field)
+                if value is None and self.instance is not None:
+                    value = getattr(self.instance, field)
+                if not str(value or "").strip():
+                    raise serializers.ValidationError(
+                        {field: f"{field.replace('_', ' ').title()} is required when Trellix EDR is enabled."}
+                    )
+
+        allow_containment = attrs.get("allow_containment")
+        if allow_containment is None and self.instance is not None:
+            allow_containment = self.instance.allow_containment
+        if allow_containment:
+            action_scopes = attrs.get("action_scopes")
+            if action_scopes is None and self.instance is not None:
+                action_scopes = self.instance.action_scopes
+            if not action_scopes:
+                raise serializers.ValidationError(
+                    {"action_scopes": "Action scopes are required before containment can be enabled."}
+                )
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self.context.get("reveal_secrets"):
+            data["client_secret"] = ""
+        return data
+
+
+class TelegramNotificationConfigSerializer(serializers.ModelSerializer):
+    bot_token_configured = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TelegramNotificationConfig
+        fields = (
+            "enabled",
+            "bot_token",
+            "bot_token_configured",
+            "asp_base_url",
+            "retry_limit",
+            "rate_limit_per_minute",
+            "aggregation_window_seconds",
+            "aggregation_threshold",
+            "quiet_hours_start",
+            "quiet_hours_end",
+            "updated_at",
+        )
+        read_only_fields = ("bot_token_configured", "updated_at")
+        extra_kwargs = {
+            "bot_token": {"required": False, "allow_blank": True, "trim_whitespace": False},
+            "asp_base_url": {"required": False, "allow_blank": True},
+        }
+
+    def get_bot_token_configured(self, obj):
+        return bool(obj.bot_token)
+
+    def validate_aggregation_threshold(self, value):
+        if value < 2:
+            raise serializers.ValidationError("Aggregation threshold must be at least 2.")
+        return value
+
+    def _validate_hour(self, value):
+        if value is None:
+            return value
+        if value < 0 or value > 23:
+            raise serializers.ValidationError("Hour must be between 0 and 23.")
+        return value
+
+    def validate_quiet_hours_start(self, value):
+        return self._validate_hour(value)
+
+    def validate_quiet_hours_end(self, value):
+        return self._validate_hour(value)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        enabled = attrs.get("enabled")
+        if enabled is None and self.instance is not None:
+            enabled = self.instance.enabled
+        if enabled:
+            token = attrs.get("bot_token")
+            if token is None and self.instance is not None:
+                token = self.instance.bot_token
+            if not str(token or "").strip():
+                raise serializers.ValidationError(
+                    {"bot_token": "Bot token is required when Telegram notifications are enabled."}
+                )
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # The token is write-only: the API never returns it, even to an admin.
+        data["bot_token"] = ""
+        return data
+
+
+class PlaybookAutomationConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaybookAutomationConfig
+        fields = ("enabled", "max_auto_runs_per_case", "updated_at")
+        read_only_fields = ("updated_at",)
+
+
+class PlaybookAutomationRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaybookAutomationRule
+        fields = (
+            "id",
+            "name",
+            "enabled",
+            "keywords",
+            "min_severity",
+            "playbook_name",
+            "priority",
+            "fallback",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate_keywords(self, value):
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise serializers.ValidationError("Keywords must be a list of strings.")
+        return [item.strip() for item in value if item.strip()]
+
+    def validate_playbook_name(self, value):
+        name = str(value or "").strip()
+        if not name:
+            raise serializers.ValidationError("Playbook name is required.")
+        return name
+
+
+class McpServerConfigSerializer(serializers.ModelSerializer):
+    token_configured = serializers.SerializerMethodField()
+
+    class Meta:
+        model = McpServerConfig
+        fields = (
+            "id",
+            "name",
+            "transport",
+            "url_or_command",
+            "auth_header",
+            "token",
+            "token_configured",
+            "timeout_seconds",
+            "allowed_tools",
+            "enabled",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "token_configured", "created_at", "updated_at")
+        extra_kwargs = {
+            "token": {"required": False, "allow_blank": True, "trim_whitespace": False},
+            "auth_header": {"required": False, "allow_blank": True},
+        }
+
+    def get_token_configured(self, obj):
+        return bool(obj.token)
+
+    def validate_allowed_tools(self, value):
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise serializers.ValidationError("Allowed tools must be a list of tool names.")
+        return [item.strip() for item in value if item.strip()]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        enabled = attrs.get("enabled")
+        if enabled is None and self.instance is not None:
+            enabled = self.instance.enabled
+        if enabled:
+            target = attrs.get("url_or_command")
+            if target is None and self.instance is not None:
+                target = self.instance.url_or_command
+            if not str(target or "").strip():
+                raise serializers.ValidationError(
+                    {"url_or_command": "A URL or command is required when the server is enabled."}
+                )
+            tools = attrs.get("allowed_tools")
+            if tools is None and self.instance is not None:
+                tools = self.instance.allowed_tools
+            if not tools:
+                raise serializers.ValidationError(
+                    {"allowed_tools": "List the tools ASP may call. An empty allowlist blocks every tool."}
+                )
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["token"] = ""
+        return data
+
+
+class IocVerificationConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IocVerificationConfig
+        fields = (
+            "enabled",
+            "internal_sources_only",
+            "reputable_domains",
+            "internal_networks",
+            "internal_domains",
+            "max_web_results",
+            "rate_limit_per_minute",
+            "ttl_ip_hours",
+            "ttl_domain_hours",
+            "ttl_url_hours",
+            "ttl_hash_hours",
+            "ttl_email_hours",
+            "updated_at",
+        )
+        read_only_fields = ("updated_at",)
+
+    def _validate_string_list(self, value, label):
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise serializers.ValidationError(f"{label} must be a list of strings.")
+        return [item.strip() for item in value if item.strip()]
+
+    def validate_reputable_domains(self, value):
+        return self._validate_string_list(value, "Reputable domains")
+
+    def validate_internal_domains(self, value):
+        return self._validate_string_list(value, "Internal domains")
+
+    def validate_internal_networks(self, value):
+        import ipaddress
+
+        networks = self._validate_string_list(value, "Internal networks")
+        for item in networks:
+            try:
+                ipaddress.ip_network(item, strict=False)
+            except ValueError as exc:
+                raise serializers.ValidationError(f"{item} is not a valid network.") from exc
+        return networks
+
+
+class BrandingConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BrandingConfig
+        fields = (
+            "product_name",
+            "product_short_name",
+            "logo_full",
+            "logo_compact",
+            "logo_mark",
+            "logo_dark",
+            "favicon",
+            "login_background",
+            "primary_color",
+            "accent_color",
+            "updated_at",
+        )
+        read_only_fields = ("updated_at",)
+
+    def _validate_colour(self, value):
+        text = str(value or "").strip()
+        if not text:
+            return text
+        if not re.fullmatch(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})", text):
+            raise serializers.ValidationError("Use a hex colour such as #302D7A.")
+        return text.upper()
+
+    def validate_primary_color(self, value):
+        return self._validate_colour(value)
+
+    def validate_accent_color(self, value):
+        return self._validate_colour(value)
+
+    def validate_product_name(self, value):
+        text = str(value or "").strip()
+        if not text:
+            raise serializers.ValidationError("Product name cannot be empty.")
+        return text

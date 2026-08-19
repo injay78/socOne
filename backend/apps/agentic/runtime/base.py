@@ -106,6 +106,19 @@ def _time_bucket(dt, window):
     return dt.strftime("%Y%m%d%H%M")
 
 
+def correlation_identity(rule_id, keys=None):
+    """Stable correlation key for one behaviour on one entity.
+
+    Deliberately carries no timestamp: recency is decided by the sliding window
+    in create_alert_with_context. Bucketing time into the key split a single
+    recurring behaviour across Cases whenever events straddled a bucket edge.
+    """
+    parts = [str(rule_id)]
+    parts.extend(sorted(str(item).strip().lower() for item in (keys or []) if str(item).strip()))
+    raw_key = "|".join(parts)
+    return f"corr-{hashlib.sha256(raw_key.encode('utf-8')).hexdigest()[:16]}"
+
+
 def generate_correlation_uid(rule_id, time_window="24h", timestamp=None, keys=None):
     key_parts = [str(rule_id), _time_bucket(timestamp or datetime.now(timezone.utc), time_window)]
     for key in sorted(str(item) for item in (keys or []) if item):

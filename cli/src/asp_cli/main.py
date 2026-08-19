@@ -44,9 +44,9 @@ class RuntimeOptions:
     verbose: bool
 
 
-app = typer.Typer(no_args_is_help=True, invoke_without_command=True, help="ASP command line client.")
-auth_app = typer.Typer(no_args_is_help=True, help="Authenticate and inspect the current ASP session.")
-config_app = typer.Typer(no_args_is_help=True, help="Read and write ASP CLI settings.")
+app = typer.Typer(no_args_is_help=True, invoke_without_command=True, help="SOC platform command line client.")
+auth_app = typer.Typer(no_args_is_help=True, help="Authenticate and inspect the current session.")
+config_app = typer.Typer(no_args_is_help=True, help="Read and write CLI settings.")
 completion_app = typer.Typer(no_args_is_help=True, help="Show shell completion installation commands.")
 case_app = typer.Typer(no_args_is_help=True, help="List, show, and update ASP cases.")
 alert_app = typer.Typer(no_args_is_help=True, help="List and show ASP alerts.")
@@ -62,6 +62,10 @@ siem_schema_app = typer.Typer(no_args_is_help=True, help="Explore SIEM schema me
 siem_search_app = typer.Typer(no_args_is_help=True, help="Run SIEM search workflows.")
 siem_query_app = typer.Typer(no_args_is_help=True, help="Run structured or raw SIEM queries.")
 siem_fields_app = typer.Typer(no_args_is_help=True, help="Discover live SIEM fields.")
+siem_qradar_app = typer.Typer(no_args_is_help=True, help="Query IBM QRadar offences and events.")
+edr_app = typer.Typer(no_args_is_help=True, help="Query ASP EDR integrations.")
+notify_app = typer.Typer(no_args_is_help=True, help="Send and test ASP notifications.")
+edr_trellix_app = typer.Typer(no_args_is_help=True, help="Query Trellix EDR detections, hosts and searches.")
 ti_app = typer.Typer(no_args_is_help=True, help="Query threat intelligence providers.")
 cmdb_app = typer.Typer(no_args_is_help=True, help="Look up asset context from CMDB providers.")
 dev_app = typer.Typer(no_args_is_help=True, help="Advanced developer and debugging commands.")
@@ -83,7 +87,11 @@ siem_app.add_typer(siem_schema_app, name="schema")
 siem_app.add_typer(siem_search_app, name="search")
 siem_app.add_typer(siem_query_app, name="query")
 siem_app.add_typer(siem_fields_app, name="fields")
+siem_app.add_typer(siem_qradar_app, name="qradar")
 app.add_typer(siem_app, name="siem")
+edr_app.add_typer(edr_trellix_app, name="trellix")
+app.add_typer(edr_app, name="edr")
+app.add_typer(notify_app, name="notify")
 app.add_typer(ti_app, name="ti")
 app.add_typer(cmdb_app, name="cmdb")
 dev_app.add_typer(dev_stream_app, name="stream")
@@ -1476,3 +1484,317 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
+
+
+@siem_qradar_app.command("search")
+def siem_qradar_search(
+    ctx: typer.Context,
+    query: Annotated[str, typer.Option("--query", help="AQL statement. The server guard enforces read-only, time window and row limits.")],
+    limit: Annotated[int, typer.Option("--limit", min=1, max=10000, help="Maximum records.")] = 100,
+    index_name: Annotated[str | None, typer.Option("--index-name", help="Optional label for the response.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "siem.query.aql", output, lambda runtime, out: _qradar_search(runtime, out, query, limit, index_name))
+
+
+@siem_qradar_app.command("offenses")
+def siem_qradar_offenses(
+    ctx: typer.Context,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=500, help="Maximum offences.")] = 50,
+    offset: Annotated[int, typer.Option("--offset", min=0, help="Result offset.")] = 0,
+    filter_expression: Annotated[str | None, typer.Option("--filter", help="QRadar filter expression.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "siem.qradar.offenses", output, lambda runtime, out: _qradar_offenses(runtime, out, limit, offset, filter_expression))
+
+
+@siem_qradar_app.command("offense")
+def siem_qradar_offense(
+    ctx: typer.Context,
+    offense_id: Annotated[str, typer.Argument(help="QRadar offence id.")],
+    with_context: Annotated[bool, typer.Option("--with-context/--no-context", help="Include addresses and top events.")] = True,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "siem.qradar.offense", output, lambda runtime, out: _qradar_offense(runtime, out, offense_id, with_context))
+
+
+@edr_trellix_app.command("detections")
+def edr_trellix_detections(
+    ctx: typer.Context,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=500, help="Maximum detections.")] = 50,
+    since: Annotated[str | None, typer.Option("--since", help="ISO 8601 lower bound.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "edr.trellix.detections", output, lambda runtime, out: _trellix_detections(runtime, out, limit, since))
+
+
+@edr_trellix_app.command("detection")
+def edr_trellix_detection(
+    ctx: typer.Context,
+    detection_id: Annotated[str, typer.Argument(help="Trellix detection id.")],
+    with_context: Annotated[bool, typer.Option("--with-context/--no-context", help="Include process trace when the tenant exposes it.")] = True,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "edr.trellix.detection", output, lambda runtime, out: _trellix_detection(runtime, out, detection_id, with_context))
+
+
+@edr_trellix_app.command("host")
+def edr_trellix_host(
+    ctx: typer.Context,
+    hostname: Annotated[str | None, typer.Option("--hostname", help="Host name.")] = None,
+    ip: Annotated[str | None, typer.Option("--ip", help="Host IP address.")] = None,
+    agent_id: Annotated[str | None, typer.Option("--agent-id", help="Trellix agent id.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "edr.trellix.host", output, lambda runtime, out: _trellix_host(runtime, out, hostname, ip, agent_id))
+
+
+@edr_trellix_app.command("search")
+def edr_trellix_search(
+    ctx: typer.Context,
+    query: Annotated[str, typer.Option("--query", help="EDR search expression.")],
+    mode: Annotated[str, typer.Option("--mode", help="historical or realtime.")] = "historical",
+    hours: Annotated[float | None, typer.Option("--hours", help="Look-back window in hours. Capped by the server guard.")] = None,
+    limit: Annotated[int | None, typer.Option("--limit", min=1, max=10000, help="Maximum rows.")] = None,
+    host_ids: Annotated[str | None, typer.Option("--host-ids", help="Comma-separated agent ids to scope the search.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "edr.trellix.search", output, lambda runtime, out: _trellix_search(runtime, out, query, mode, hours, limit, host_ids))
+
+
+def _qradar_search(runtime: RuntimeOptions, output: OutputFormat, query: str, limit: int, index_name: str | None) -> None:
+    payload = _agent_request(runtime, "POST", "/api/agent/v1/siem/qradar/search/", json=_clean_params({
+        "query": query,
+        "limit": limit,
+        "index_name": index_name,
+    }))
+    _emit_agent_payload(runtime, output, "siem.query.aql", payload, _siem_query_table)
+
+
+def _qradar_offenses(runtime: RuntimeOptions, output: OutputFormat, limit: int, offset: int, filter_expression: str | None) -> None:
+    payload = _agent_request(runtime, "GET", "/api/agent/v1/siem/qradar/offenses/", params=_clean_params({
+        "limit": limit,
+        "offset": offset,
+        "filter": filter_expression,
+    }))
+    _emit_agent_payload(runtime, output, "siem.qradar.offenses", payload, _qradar_offense_table)
+
+
+def _qradar_offense(runtime: RuntimeOptions, output: OutputFormat, offense_id: str, with_context: bool) -> None:
+    payload = _agent_request(
+        runtime,
+        "GET",
+        f"/api/agent/v1/siem/qradar/offenses/{offense_id}/",
+        params={"with_context": "true" if with_context else "false"},
+    )
+    _emit_agent_payload(runtime, output, "siem.qradar.offense", payload, _qradar_offense_detail_table)
+
+
+def _trellix_detections(runtime: RuntimeOptions, output: OutputFormat, limit: int, since: str | None) -> None:
+    payload = _agent_request(runtime, "GET", "/api/agent/v1/edr/trellix/detections/", params=_clean_params({
+        "limit": limit,
+        "since": since,
+    }))
+    _emit_agent_payload(runtime, output, "edr.trellix.detections", payload, _trellix_detection_table)
+
+
+def _trellix_detection(runtime: RuntimeOptions, output: OutputFormat, detection_id: str, with_context: bool) -> None:
+    payload = _agent_request(
+        runtime,
+        "GET",
+        f"/api/agent/v1/edr/trellix/detections/{detection_id}/",
+        params={"with_context": "true" if with_context else "false"},
+    )
+    _emit_agent_payload(runtime, output, "edr.trellix.detection", payload, _trellix_detection_detail_table)
+
+
+def _trellix_host(runtime: RuntimeOptions, output: OutputFormat, hostname: str | None, ip: str | None, agent_id: str | None) -> None:
+    if not any([hostname, ip, agent_id]):
+        raise CliError("missing_argument", "Provide --hostname, --ip or --agent-id", {}, EXIT_USAGE)
+    payload = _agent_request(runtime, "GET", "/api/agent/v1/edr/trellix/hosts/", params=_clean_params({
+        "hostname": hostname,
+        "ip": ip,
+        "agent_id": agent_id,
+    }))
+    _emit_agent_payload(runtime, output, "edr.trellix.host", payload, _trellix_host_table)
+
+
+def _trellix_search(
+    runtime: RuntimeOptions,
+    output: OutputFormat,
+    query: str,
+    mode: str,
+    hours: float | None,
+    limit: int | None,
+    host_ids: str | None,
+) -> None:
+    ids = [item.strip() for item in (host_ids or "").split(",") if item.strip()]
+    payload = _agent_request(runtime, "POST", "/api/agent/v1/edr/trellix/search/", json=_clean_params({
+        "query": query,
+        "mode": mode,
+        "hours": hours,
+        "limit": limit,
+        "host_ids": ids or None,
+    }))
+    _emit_agent_payload(runtime, output, "edr.trellix.search", payload, _trellix_search_table)
+
+
+def _qradar_offense_table(data, _meta) -> Table:
+    rows = (data or {}).get("offenses", []) if isinstance(data, dict) else (data or [])
+    return _list_table(
+        "QRadar offences",
+        ["id", "description", "status", "magnitude", "event_count", "start_time"],
+        rows,
+    )
+
+
+def _qradar_offense_detail_table(data, _meta) -> Table:
+    row = data or {}
+    return _list_table(
+        "QRadar offence",
+        ["offense_id", "stream_name", "status", "magnitude", "event_count", "source_addresses", "destination_addresses"],
+        [row],
+    )
+
+
+def _trellix_detection_table(data, _meta) -> Table:
+    rows = (data or {}).get("detections", []) if isinstance(data, dict) else (data or [])
+    return _list_table(
+        "Trellix detections",
+        ["id", "threatName", "severity", "hostname", "detectedAt", "status"],
+        rows,
+    )
+
+
+def _trellix_detection_detail_table(data, _meta) -> Table:
+    detection = (data or {}).get("detection") or {}
+    return _list_table("Trellix detection", ["id", "threatName", "severity", "status"], [detection])
+
+
+def _trellix_host_table(data, _meta) -> Table:
+    host = (data or {}).get("host") or {}
+    return _list_table("Trellix host", ["hostname", "ipAddress", "os", "agentId", "lastSeen"], [host])
+
+
+def _trellix_search_table(data, _meta) -> Table:
+    payload = data or {}
+    return _list_table(
+        "Trellix search",
+        ["mode", "row_count"],
+        [{"mode": payload.get("mode"), "row_count": payload.get("row_count")}],
+    )
+
+
+@case_app.command("triage")
+def case_triage(
+    ctx: typer.Context,
+    case_id: Annotated[str, typer.Argument(help="Case readable id, e.g. case_000002.")],
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "case.triage", output, lambda runtime, out: _case_triage(runtime, out, case_id))
+
+
+@case_app.command("triage-run")
+def case_triage_run(
+    ctx: typer.Context,
+    case_id: Annotated[str, typer.Argument(help="Case readable id, e.g. case_000002.")],
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "case.triage.run", output, lambda runtime, out: _case_triage_run(runtime, out, case_id))
+
+
+@notify_app.command("test")
+def notify_test(
+    ctx: typer.Context,
+    chat_id: Annotated[str, typer.Option("--chat-id", help="Telegram chat id.")],
+    text: Annotated[str | None, typer.Option("--text", help="Message body.")] = None,
+    message_thread_id: Annotated[str | None, typer.Option("--thread-id", help="Topic id.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "notification.test", output, lambda runtime, out: _notify_test(runtime, out, chat_id, text, message_thread_id))
+
+
+@notify_app.command("send")
+def notify_send(
+    ctx: typer.Context,
+    event: Annotated[str, typer.Option("--event", help="Registered event type.")],
+    payload_json: Annotated[str | None, typer.Option("--payload-json", help="Event payload as JSON.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "notification.send", output, lambda runtime, out: _notify_send(runtime, out, event, payload_json))
+
+
+def _case_triage(runtime: RuntimeOptions, output: OutputFormat, case_id: str) -> None:
+    payload = _agent_request(runtime, "GET", f"/api/agent/v1/cases/{case_id}/triage/")
+    _emit_agent_payload(runtime, output, "case.triage", payload, _triage_table)
+
+
+def _case_triage_run(runtime: RuntimeOptions, output: OutputFormat, case_id: str) -> None:
+    payload = _agent_request(runtime, "POST", f"/api/agent/v1/cases/{case_id}/triage/", json={})
+    _emit_agent_payload(runtime, output, "case.triage.run", payload, _triage_table)
+
+
+def _notify_test(runtime: RuntimeOptions, output: OutputFormat, chat_id: str, text: str | None, thread_id: str | None) -> None:
+    payload = _agent_request(runtime, "POST", "/api/agent/v1/notifications/test/", json=_clean_params({
+        "chat_id": chat_id,
+        "text": text,
+        "message_thread_id": thread_id,
+    }))
+    _emit_agent_payload(runtime, output, "notification.test", payload, _notify_table)
+
+
+def _notify_send(runtime: RuntimeOptions, output: OutputFormat, event: str, payload_json: str | None) -> None:
+    body = {"event_type": event}
+    if payload_json:
+        try:
+            body["payload"] = json.loads(payload_json)
+        except json.JSONDecodeError as exc:
+            raise CliError("invalid_json", f"--payload-json is not valid JSON: {exc}", {}, EXIT_USAGE) from exc
+    payload = _agent_request(runtime, "POST", "/api/agent/v1/notifications/send/", json=body)
+    _emit_agent_payload(runtime, output, "notification.send", payload, _notify_table)
+
+
+def _triage_table(data, _meta) -> Table:
+    return _list_table(
+        "ASP triage result",
+        ["case_readable_id", "verdict", "effective_verdict", "confidence", "needs_human", "prompt_family", "model_name"],
+        [data or {}],
+    )
+
+
+def _notify_table(data, _meta) -> Table:
+    return _list_table("ASP notification", ["success", "queued", "detail"], [data or {}])
+
+
+@ti_app.command("verify")
+def ti_verify(
+    ctx: typer.Context,
+    indicator: Annotated[str | None, typer.Option("--indicator", help="Single indicator. Defanged forms are accepted.")] = None,
+    indicators: Annotated[str | None, typer.Option("--indicators", help="Comma-separated indicators, at most 25.")] = None,
+    force: Annotated[bool, typer.Option("--force/--use-cache", help="Bypass the verification cache.")] = False,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "intel.verify", output, lambda runtime, out: _ti_verify(runtime, out, indicator, indicators, force))
+
+
+def _ti_verify(runtime: RuntimeOptions, output: OutputFormat, indicator: str | None, indicators: str | None, force: bool) -> None:
+    if not indicator and not indicators:
+        raise CliError("missing_argument", "Provide --indicator or --indicators", {}, EXIT_USAGE)
+    body: dict = {"force": force}
+    if indicators:
+        body["indicators"] = [item.strip() for item in indicators.split(",") if item.strip()]
+    else:
+        body["indicator"] = indicator
+    payload = _agent_request(runtime, "POST", "/api/agent/v1/intel/verify/", json=body)
+    _emit_agent_payload(runtime, output, "intel.verify", payload, _ioc_verify_table)
+
+
+def _ioc_verify_table(data, _meta) -> Table:
+    rows = (data or {}).get("results", []) if isinstance(data, dict) else (data or [])
+    for row in rows:
+        row["reference_count"] = len(row.get("references") or [])
+    return _list_table(
+        "ASP IOC verification",
+        ["indicator_type", "indicator_value", "verdict", "confidence", "reference_count", "is_internal"],
+        rows,
+    )

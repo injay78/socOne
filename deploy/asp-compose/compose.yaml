@@ -106,6 +106,21 @@ services:
     restart: unless-stopped
     command: ["python", "manage.py", "run_dashboard_cache_worker"]
 
+  asp-worker-qradar-offense:
+    <<: *asp-backend
+    restart: unless-stopped
+    command: ["python", "manage.py", "run_qradar_offense_worker"]
+
+  asp-worker-trellix-detection:
+    <<: *asp-backend
+    restart: unless-stopped
+    command: ["python", "manage.py", "run_trellix_detection_worker"]
+
+  asp-worker-notification:
+    <<: *asp-backend
+    restart: unless-stopped
+    command: ["python", "manage.py", "run_notification_worker"]
+
   asp-migrate:
     <<: *asp-backend
     restart: "no"

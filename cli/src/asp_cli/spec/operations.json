@@ -9,7 +9,9 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/version/",
       "permission": "authenticated",
-      "capabilities": ["agent.version"],
+      "capabilities": [
+        "agent.version"
+      ],
       "aliases": [],
       "examples": [
         "asp doctor",
@@ -22,7 +24,9 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/version/",
       "permission": "authenticated",
-      "capabilities": ["agent.version"],
+      "capabilities": [
+        "agent.version"
+      ],
       "aliases": [],
       "examples": [
         "asp auth login --api-url https://asp.example.com --api-key asp_xxx"
@@ -34,7 +38,9 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/version/",
       "permission": "authenticated",
-      "capabilities": ["agent.version"],
+      "capabilities": [
+        "agent.version"
+      ],
       "aliases": [],
       "examples": [
         "asp auth status",
@@ -96,9 +102,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/cases/",
       "permission": "authenticated",
-      "capabilities": ["case.list"],
-      "aliases": ["list_cases"],
-      "examples": ["asp case list --status New --output json"]
+      "capabilities": [
+        "case.list"
+      ],
+      "aliases": [
+        "list_cases"
+      ],
+      "examples": [
+        "asp case list --status New --output json"
+      ]
     },
     {
       "id": "case.show",
@@ -106,9 +118,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/cases/{case_id}/",
       "permission": "authenticated",
-      "capabilities": ["case.show"],
-      "aliases": ["list_cases(case_id=...)"],
-      "examples": ["asp case show case_000001 --output json"]
+      "capabilities": [
+        "case.show"
+      ],
+      "aliases": [
+        "list_cases(case_id=...)"
+      ],
+      "examples": [
+        "asp case show case_000001 --output json"
+      ]
     },
     {
       "id": "case.update_ai",
@@ -116,9 +134,15 @@
       "method": "PATCH",
       "endpoint": "/api/agent/v1/cases/{case_id}/ai-analysis/",
       "permission": "business_writer",
-      "capabilities": ["case.update_ai"],
-      "aliases": ["update_case"],
-      "examples": ["asp case update-ai case_000001 --summary-file summary.md --output json"]
+      "capabilities": [
+        "case.update_ai"
+      ],
+      "aliases": [
+        "update_case"
+      ],
+      "examples": [
+        "asp case update-ai case_000001 --summary-file summary.md --output json"
+      ]
     },
     {
       "id": "alert.list",
@@ -126,9 +150,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/alerts/",
       "permission": "authenticated",
-      "capabilities": ["alert.list"],
-      "aliases": ["list_alerts"],
-      "examples": ["asp alert list --case-id case_000001 --output json"]
+      "capabilities": [
+        "alert.list"
+      ],
+      "aliases": [
+        "list_alerts"
+      ],
+      "examples": [
+        "asp alert list --case-id case_000001 --output json"
+      ]
     },
     {
       "id": "alert.show",
@@ -136,9 +166,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/alerts/{alert_id}/",
       "permission": "authenticated",
-      "capabilities": ["alert.show"],
-      "aliases": ["list_alerts(alert_id=...)"],
-      "examples": ["asp alert show alert_000001 --output json"]
+      "capabilities": [
+        "alert.show"
+      ],
+      "aliases": [
+        "list_alerts(alert_id=...)"
+      ],
+      "examples": [
+        "asp alert show alert_000001 --output json"
+      ]
     },
     {
       "id": "artifact.list",
@@ -146,9 +182,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/artifacts/",
       "permission": "authenticated",
-      "capabilities": ["artifact.list"],
-      "aliases": ["list_artifacts"],
-      "examples": ["asp artifact list --type \"IP Address\" --output json"]
+      "capabilities": [
+        "artifact.list"
+      ],
+      "aliases": [
+        "list_artifacts"
+      ],
+      "examples": [
+        "asp artifact list --type \"IP Address\" --output json"
+      ]
     },
     {
       "id": "artifact.show",
@@ -156,9 +198,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/artifacts/{artifact_id}/",
       "permission": "authenticated",
-      "capabilities": ["artifact.show"],
-      "aliases": ["list_artifacts(artifact_id=...)"],
-      "examples": ["asp artifact show artifact_000001 --output json"]
+      "capabilities": [
+        "artifact.show"
+      ],
+      "aliases": [
+        "list_artifacts(artifact_id=...)"
+      ],
+      "examples": [
+        "asp artifact show artifact_000001 --output json"
+      ]
     },
     {
       "id": "knowledge.search",
@@ -166,9 +214,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/knowledge/",
       "permission": "authenticated",
-      "capabilities": ["knowledge.search"],
-      "aliases": ["search_knowledge"],
-      "examples": ["asp knowledge search phishing --output json"]
+      "capabilities": [
+        "knowledge.search"
+      ],
+      "aliases": [
+        "search_knowledge"
+      ],
+      "examples": [
+        "asp knowledge search phishing --output json"
+      ]
     },
     {
       "id": "knowledge.show",
@@ -176,9 +230,13 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/knowledge/{knowledge_id}/",
       "permission": "authenticated",
-      "capabilities": ["knowledge.show"],
+      "capabilities": [
+        "knowledge.show"
+      ],
       "aliases": [],
-      "examples": ["asp knowledge show knowledge_000001 --output json"]
+      "examples": [
+        "asp knowledge show knowledge_000001 --output json"
+      ]
     },
     {
       "id": "knowledge.update",
@@ -186,9 +244,15 @@
       "method": "PATCH",
       "endpoint": "/api/agent/v1/knowledge/{knowledge_id}/",
       "permission": "business_writer",
-      "capabilities": ["knowledge.update"],
-      "aliases": ["update_knowledge"],
-      "examples": ["asp knowledge update knowledge_000001 --body-file note.md --output json"]
+      "capabilities": [
+        "knowledge.update"
+      ],
+      "aliases": [
+        "update_knowledge"
+      ],
+      "examples": [
+        "asp knowledge update knowledge_000001 --body-file note.md --output json"
+      ]
     },
     {
       "id": "comment.list",
@@ -196,9 +260,13 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/comments/",
       "permission": "authenticated",
-      "capabilities": ["comment.list"],
+      "capabilities": [
+        "comment.list"
+      ],
       "aliases": [],
-      "examples": ["asp comment list case_000001 --output json"]
+      "examples": [
+        "asp comment list case_000001 --output json"
+      ]
     },
     {
       "id": "comment.add",
@@ -206,9 +274,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/comments/",
       "permission": "business_writer",
-      "capabilities": ["comment.add"],
-      "aliases": ["add_comment"],
-      "examples": ["asp comment add case_000001 --body-file note.md --output json"]
+      "capabilities": [
+        "comment.add"
+      ],
+      "aliases": [
+        "add_comment"
+      ],
+      "examples": [
+        "asp comment add case_000001 --body-file note.md --output json"
+      ]
     },
     {
       "id": "file.upload",
@@ -216,9 +290,13 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/files/",
       "permission": "authenticated",
-      "capabilities": ["file.upload"],
+      "capabilities": [
+        "file.upload"
+      ],
       "aliases": [],
-      "examples": ["asp file upload evidence.txt --output json"]
+      "examples": [
+        "asp file upload evidence.txt --output json"
+      ]
     },
     {
       "id": "file.info",
@@ -226,9 +304,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/files/{file_key}/",
       "permission": "authenticated",
-      "capabilities": ["file.info"],
-      "aliases": ["get_file"],
-      "examples": ["asp file info 6f2c5d7e-31c6-4f48-9e3c-6d9b5f92c457 --output json"]
+      "capabilities": [
+        "file.info"
+      ],
+      "aliases": [
+        "get_file"
+      ],
+      "examples": [
+        "asp file info 6f2c5d7e-31c6-4f48-9e3c-6d9b5f92c457 --output json"
+      ]
     },
     {
       "id": "file.download",
@@ -236,9 +320,13 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/files/{file_key}/",
       "permission": "authenticated",
-      "capabilities": ["file.info"],
+      "capabilities": [
+        "file.info"
+      ],
       "aliases": [],
-      "examples": ["asp file download 6f2c5d7e-31c6-4f48-9e3c-6d9b5f92c457 --output-path evidence.txt"]
+      "examples": [
+        "asp file download 6f2c5d7e-31c6-4f48-9e3c-6d9b5f92c457 --output-path evidence.txt"
+      ]
     },
     {
       "id": "file.read_text",
@@ -246,9 +334,13 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/files/{file_key}/read-text/",
       "permission": "authenticated",
-      "capabilities": ["file.read_text"],
+      "capabilities": [
+        "file.read_text"
+      ],
       "aliases": [],
-      "examples": ["asp file read-text 6f2c5d7e-31c6-4f48-9e3c-6d9b5f92c457 --max-bytes 4096 --output json"]
+      "examples": [
+        "asp file read-text 6f2c5d7e-31c6-4f48-9e3c-6d9b5f92c457 --max-bytes 4096 --output json"
+      ]
     },
     {
       "id": "enrichment.create",
@@ -256,9 +348,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/enrichments/",
       "permission": "business_writer",
-      "capabilities": ["enrichment.create"],
-      "aliases": ["create_enrichment"],
-      "examples": ["asp enrichment create case_000001 --name ti --data-file enrichment.json --output json"]
+      "capabilities": [
+        "enrichment.create"
+      ],
+      "aliases": [
+        "create_enrichment"
+      ],
+      "examples": [
+        "asp enrichment create case_000001 --name ti --data-file enrichment.json --output json"
+      ]
     },
     {
       "id": "playbook.template.list",
@@ -266,9 +364,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/playbooks/templates/",
       "permission": "authenticated",
-      "capabilities": ["playbook.template.list"],
-      "aliases": ["list_playbook_templates"],
-      "examples": ["asp playbook template list --output json"]
+      "capabilities": [
+        "playbook.template.list"
+      ],
+      "aliases": [
+        "list_playbook_templates"
+      ],
+      "examples": [
+        "asp playbook template list --output json"
+      ]
     },
     {
       "id": "playbook.list",
@@ -276,9 +380,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/playbooks/",
       "permission": "authenticated",
-      "capabilities": ["playbook.list"],
-      "aliases": ["list_playbooks"],
-      "examples": ["asp playbook list --case-id case_000001 --output json"]
+      "capabilities": [
+        "playbook.list"
+      ],
+      "aliases": [
+        "list_playbooks"
+      ],
+      "examples": [
+        "asp playbook list --case-id case_000001 --output json"
+      ]
     },
     {
       "id": "playbook.show",
@@ -286,9 +396,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/playbooks/{playbook_id}/",
       "permission": "authenticated",
-      "capabilities": ["playbook.show"],
-      "aliases": ["list_playbooks(playbook_id=...)"],
-      "examples": ["asp playbook show playbook_000001 --output json"]
+      "capabilities": [
+        "playbook.show"
+      ],
+      "aliases": [
+        "list_playbooks(playbook_id=...)"
+      ],
+      "examples": [
+        "asp playbook show playbook_000001 --output json"
+      ]
     },
     {
       "id": "playbook.run",
@@ -296,9 +412,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/playbooks/run/",
       "permission": "business_writer",
-      "capabilities": ["playbook.run"],
-      "aliases": ["execute_playbook"],
-      "examples": ["asp playbook run collect_case_context case_000001 --user-input-file prompt.md --output json"]
+      "capabilities": [
+        "playbook.run"
+      ],
+      "aliases": [
+        "execute_playbook"
+      ],
+      "examples": [
+        "asp playbook run collect_case_context case_000001 --user-input-file prompt.md --output json"
+      ]
     },
     {
       "id": "siem.schema",
@@ -306,9 +428,16 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/siem/schema/",
       "permission": "authenticated",
-      "capabilities": ["siem.schema"],
-      "aliases": ["siem_explore_schema"],
-      "examples": ["asp siem schema list --output json", "asp siem schema show logs-security --output json"]
+      "capabilities": [
+        "siem.schema"
+      ],
+      "aliases": [
+        "siem_explore_schema"
+      ],
+      "examples": [
+        "asp siem schema list --output json",
+        "asp siem schema show logs-security --output json"
+      ]
     },
     {
       "id": "siem.search.keyword",
@@ -316,9 +445,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/siem/search/keyword/",
       "permission": "authenticated",
-      "capabilities": ["siem.search.keyword"],
-      "aliases": ["siem_keyword_search"],
-      "examples": ["asp siem search keyword 1.2.3.4 --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --output json"]
+      "capabilities": [
+        "siem.search.keyword"
+      ],
+      "aliases": [
+        "siem_keyword_search"
+      ],
+      "examples": [
+        "asp siem search keyword 1.2.3.4 --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --output json"
+      ]
     },
     {
       "id": "siem.query.adaptive",
@@ -326,9 +461,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/siem/query/adaptive/",
       "permission": "authenticated",
-      "capabilities": ["siem.query.adaptive"],
-      "aliases": ["siem_adaptive_query"],
-      "examples": ["asp siem query adaptive logs-security --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --filters-file filters.json --output json"]
+      "capabilities": [
+        "siem.query.adaptive"
+      ],
+      "aliases": [
+        "siem_adaptive_query"
+      ],
+      "examples": [
+        "asp siem query adaptive logs-security --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --filters-file filters.json --output json"
+      ]
     },
     {
       "id": "siem.fields.discover",
@@ -336,9 +477,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/siem/fields/discover/",
       "permission": "authenticated",
-      "capabilities": ["siem.fields.discover"],
-      "aliases": ["siem_discover_index_fields"],
-      "examples": ["asp siem fields discover logs-security ELK --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --output json"]
+      "capabilities": [
+        "siem.fields.discover"
+      ],
+      "aliases": [
+        "siem_discover_index_fields"
+      ],
+      "examples": [
+        "asp siem fields discover logs-security ELK --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --output json"
+      ]
     },
     {
       "id": "siem.query.spl",
@@ -346,9 +493,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/siem/query/spl/",
       "permission": "authenticated",
-      "capabilities": ["siem.query.spl"],
-      "aliases": ["siem_execute_spl"],
-      "examples": ["asp siem query spl \"index=main error\" --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --output json"]
+      "capabilities": [
+        "siem.query.spl"
+      ],
+      "aliases": [
+        "siem_execute_spl"
+      ],
+      "examples": [
+        "asp siem query spl \"index=main error\" --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --output json"
+      ]
     },
     {
       "id": "siem.query.esql",
@@ -356,9 +509,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/siem/query/esql/",
       "permission": "authenticated",
-      "capabilities": ["siem.query.esql"],
-      "aliases": ["siem_execute_esql"],
-      "examples": ["asp siem query esql \"FROM logs-* | LIMIT 10\" --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --output json"]
+      "capabilities": [
+        "siem.query.esql"
+      ],
+      "aliases": [
+        "siem_execute_esql"
+      ],
+      "examples": [
+        "asp siem query esql \"FROM logs-* | LIMIT 10\" --from 2026-07-02T00:00:00Z --to 2026-07-02T01:00:00Z --output json"
+      ]
     },
     {
       "id": "ti.query",
@@ -366,9 +525,16 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/threat-intel/query/",
       "permission": "authenticated",
-      "capabilities": ["ti.query"],
-      "aliases": ["ti_query", "threat-intel query"],
-      "examples": ["asp ti query 1.2.3.4 --artifact-type \"IP Address\" --output json"]
+      "capabilities": [
+        "ti.query"
+      ],
+      "aliases": [
+        "ti_query",
+        "threat-intel query"
+      ],
+      "examples": [
+        "asp ti query 1.2.3.4 --artifact-type \"IP Address\" --output json"
+      ]
     },
     {
       "id": "cmdb.lookup",
@@ -376,9 +542,15 @@
       "method": "POST",
       "endpoint": "/api/agent/v1/cmdb/lookup/",
       "permission": "authenticated",
-      "capabilities": ["cmdb.lookup"],
-      "aliases": ["cmdb_lookup"],
-      "examples": ["asp cmdb lookup \"IP Address\" 1.2.3.4 --output json"]
+      "capabilities": [
+        "cmdb.lookup"
+      ],
+      "aliases": [
+        "cmdb_lookup"
+      ],
+      "examples": [
+        "asp cmdb lookup \"IP Address\" 1.2.3.4 --output json"
+      ]
     },
     {
       "id": "dev.stream.head",
@@ -386,9 +558,15 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/dev/streams/head/",
       "permission": "authenticated",
-      "capabilities": ["dev.stream.head"],
-      "aliases": ["read_stream_head"],
-      "examples": ["asp dev stream head custom-module-events -n 3 --output json"]
+      "capabilities": [
+        "dev.stream.head"
+      ],
+      "aliases": [
+        "read_stream_head"
+      ],
+      "examples": [
+        "asp dev stream head custom-module-events -n 3 --output json"
+      ]
     },
     {
       "id": "dev.stream.read",
@@ -396,9 +574,192 @@
       "method": "GET",
       "endpoint": "/api/agent/v1/dev/streams/message/",
       "permission": "authenticated",
-      "capabilities": ["dev.stream.read"],
-      "aliases": ["read_stream_message_by_id"],
-      "examples": ["asp dev stream read custom-module-events 0-1 --output json"]
+      "capabilities": [
+        "dev.stream.read"
+      ],
+      "aliases": [
+        "read_stream_message_by_id"
+      ],
+      "examples": [
+        "asp dev stream read custom-module-events 0-1 --output json"
+      ]
+    },
+    {
+      "id": "siem.query.aql",
+      "cli_path": "siem qradar search",
+      "method": "POST",
+      "endpoint": "/api/agent/v1/siem/qradar/search/",
+      "permission": "authenticated",
+      "capabilities": [
+        "siem.query.aql"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp siem qradar search --query \"SELECT sourceip, destinationip FROM events LAST 60 MINUTES\"",
+        "asp siem qradar search --query \"SELECT * FROM flows LAST 30 MINUTES\" --output json"
+      ]
+    },
+    {
+      "id": "siem.qradar.offenses",
+      "cli_path": "siem qradar offenses",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/siem/qradar/offenses/",
+      "permission": "authenticated",
+      "capabilities": [
+        "siem.qradar.offenses"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp siem qradar offenses --limit 20",
+        "asp siem qradar offenses --output json"
+      ]
+    },
+    {
+      "id": "siem.qradar.offense",
+      "cli_path": "siem qradar offense",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/siem/qradar/offenses/{offense_id}/",
+      "permission": "authenticated",
+      "capabilities": [
+        "siem.qradar.offense"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp siem qradar offense 1234",
+        "asp siem qradar offense 1234 --output json"
+      ]
+    },
+    {
+      "id": "edr.trellix.detections",
+      "cli_path": "edr trellix detections",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/edr/trellix/detections/",
+      "permission": "authenticated",
+      "capabilities": [
+        "edr.trellix.detections"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp edr trellix detections --limit 20",
+        "asp edr trellix detections --output json"
+      ]
+    },
+    {
+      "id": "edr.trellix.detection",
+      "cli_path": "edr trellix detection",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/edr/trellix/detections/{detection_id}/",
+      "permission": "authenticated",
+      "capabilities": [
+        "edr.trellix.detection"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp edr trellix detection abc123",
+        "asp edr trellix detection abc123 --output json"
+      ]
+    },
+    {
+      "id": "edr.trellix.host",
+      "cli_path": "edr trellix host",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/edr/trellix/hosts/",
+      "permission": "authenticated",
+      "capabilities": [
+        "edr.trellix.host"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp edr trellix host --hostname HOST-01",
+        "asp edr trellix host --ip 10.0.0.5 --output json"
+      ]
+    },
+    {
+      "id": "edr.trellix.search",
+      "cli_path": "edr trellix search",
+      "method": "POST",
+      "endpoint": "/api/agent/v1/edr/trellix/search/",
+      "permission": "authenticated",
+      "capabilities": [
+        "edr.trellix.search"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp edr trellix search --query \"process_name:vssadmin.exe\" --hours 24",
+        "asp edr trellix search --query \"sha256:abc...\" --mode realtime --output json"
+      ]
+    },
+    {
+      "id": "case.triage",
+      "cli_path": "case triage",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/cases/{case_id}/triage/",
+      "permission": "authenticated",
+      "capabilities": [
+        "case.triage"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp case triage case_000002",
+        "asp case triage case_000002 --output json"
+      ]
+    },
+    {
+      "id": "case.triage.run",
+      "cli_path": "case triage-run",
+      "method": "POST",
+      "endpoint": "/api/agent/v1/cases/{case_id}/triage/",
+      "permission": "business_writer",
+      "capabilities": [
+        "case.triage.run"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp case triage-run case_000002"
+      ]
+    },
+    {
+      "id": "notification.test",
+      "cli_path": "notify test",
+      "method": "POST",
+      "endpoint": "/api/agent/v1/notifications/test/",
+      "permission": "authenticated",
+      "capabilities": [
+        "notification.test"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp notify test --chat-id -1001234567890"
+      ]
+    },
+    {
+      "id": "notification.send",
+      "cli_path": "notify send",
+      "method": "POST",
+      "endpoint": "/api/agent/v1/notifications/send/",
+      "permission": "authenticated",
+      "capabilities": [
+        "notification.send"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp notify send --event triage.needs_human --payload-json '{\"case_id\":\"case_000002\"}'"
+      ]
+    },
+    {
+      "id": "intel.verify",
+      "cli_path": "ti verify",
+      "method": "POST",
+      "endpoint": "/api/agent/v1/intel/verify/",
+      "permission": "authenticated",
+      "capabilities": [
+        "intel.verify"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp ti verify --indicator 8.8.8.8",
+        "asp ti verify --indicator evil[.]example[.]com --output json"
+      ]
     }
   ]
 }

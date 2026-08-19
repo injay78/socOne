@@ -184,9 +184,17 @@ input:-webkit-autofill:active,
   opacity: 1;
 }
 
+/* Ant Design 6 renders tab panes as
+   .ant-tabs > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content.
+   Ant Design 5 used -content-holder > -content > -tabpane. Both are listed so
+   the height chain survives either version; without a match the pane has no
+   definite height, the page-level scroll container never forms, and the
+   surrounding Content clips the overflow with no way to scroll. */
 .system-settings-tabs,
-.system-settings-tabs .ant-tabs-content-holder,
+.system-settings-tabs .ant-tabs-body-holder,
+.system-settings-tabs .ant-tabs-body,
 .system-settings-tabs .ant-tabs-content,
+.system-settings-tabs .ant-tabs-content-holder,
 .system-settings-tabs .ant-tabs-tabpane {
   min-height: 0;
   height: 100%;
@@ -201,6 +209,7 @@ input:-webkit-autofill:active,
   font-size: 16px;
 }
 
+.system-settings-tabs .ant-tabs-body-holder,
 .system-settings-tabs .ant-tabs-content-holder {
   flex: 1;
   overflow: hidden;

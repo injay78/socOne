@@ -9,6 +9,7 @@ import ArtifactList from './pages/ArtifactList'
 import EnrichmentList from './pages/EnrichmentList'
 import PlaybookList from './pages/PlaybookList'
 import KnowledgeList from './pages/KnowledgeList'
+import TriageList from './pages/TriageList'
 import Dashboard from './pages/Dashboard'
 import SystemSettings from './pages/SystemSettings'
 import CustomDefinitions from './pages/CustomDefinitions'
@@ -60,6 +61,8 @@ export default function App() {
         <Route path="playbooks/:rowId" element={<ResourceDetailRoute resourceKey="playbooks" />} />
         <Route path="knowledge" element={<KnowledgeList />} />
         <Route path="knowledge/:rowId" element={<ResourceDetailRoute resourceKey="knowledge" />} />
+        <Route path="triage" element={<TriageList />} />
+        <Route path="triage/:rowId" element={<ResourceDetailRoute resourceKey="triage-results" />} />
         <Route path="custom" element={<PermissionRoute permission="admin"><CustomDefinitions /></PermissionRoute>} />
         <Route path="system" element={<PermissionRoute permission="admin"><SystemSettings /></PermissionRoute>} />
         <Route path="system/users" element={<Navigate to="/system" replace />} />

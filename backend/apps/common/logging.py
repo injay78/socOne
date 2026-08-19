@@ -17,6 +17,9 @@ LOG_ROLE_FILES = {
     "agentic-module-worker": "agentic-module-worker.log",
     "elk-action-worker": "elk-action-worker.log",
     "dashboard-cache-worker": "dashboard-cache-worker.log",
+    "qradar-offense-worker": "qradar-offense-worker.log",
+    "trellix-detection-worker": "trellix-detection-worker.log",
+    "notification-worker": "notification-worker.log",
 }
 ROOT_PROCESS_FILE_LOGGERS = [""]
 SERVER_PROCESS_FILE_LOGGERS = {

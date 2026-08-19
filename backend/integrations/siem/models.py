@@ -6,13 +6,15 @@ from pydantic import BaseModel, Field, model_validator, field_validator
 
 from integrations.siem.time_utils import normalize_time_range_inputs, validate_time_range_order
 
+SiemBackend = Literal["ELK", "Splunk", "QRadar"]
+
 SAMPLE_THRESHOLD = 100
 SAMPLE_COUNT = 5
 
 
 class SchemaIndexSummary(BaseModel):
     name: str = Field(..., description="Registered SIEM index/source name")
-    backend: Literal["ELK", "Splunk"] = Field(..., description="Backend that owns this index")
+    backend: SiemBackend = Field(..., description="Backend that owns this index")
     description: str = Field(..., description="Human-readable description of the index")
     default_aggregation_fields: List[str] = Field(
         default_factory=list,
@@ -217,6 +219,28 @@ class ESQLQueryInput(_RawQueryInput):
     pass
 
 
+class AQLQueryInput(BaseModel):
+    query: str = Field(..., description="AQL statement. Rewritten by the read-only guard before execution.")
+    index_name: Optional[str] = Field(
+        default=None,
+        description="Optional label for the response. QRadar sources are events or flows.",
+    )
+    limit: int = Field(
+        default=100,
+        ge=1,
+        le=10000,
+        description="Maximum number of rows to return. Capped by the QRadar max_rows setting.",
+    )
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("query must not be empty")
+        return stripped
+
+
 class FieldStat(BaseModel):
     field_name: str = Field(..., description="Name of the field for which statistics are computed")
     top_values: Dict[Union[str, int], int] = Field(
@@ -226,7 +250,7 @@ class FieldStat(BaseModel):
 
 
 class QueryOutput(BaseModel):
-    backend: Literal["ELK", "Splunk"] = Field(..., description="Backend that executed the query")
+    backend: SiemBackend = Field(..., description="Backend that executed the query")
     index_name: str = Field(..., description="Index/source queried by the tool")
     status: Literal["records", "summary"] = Field(
         ...,
@@ -262,7 +286,7 @@ class QueryOutput(BaseModel):
 
 class IndexInfo(BaseModel):
     name: str
-    backend: Literal["ELK", "Splunk"]
+    backend: SiemBackend
     description: str
     fields: List[SchemaFieldInfo]
 
@@ -272,7 +296,7 @@ class DiscoverIndexFieldsInput(BaseModel):
         ...,
         description="Target SIEM index/source name to discover fields from the live backend.",
     )
-    backend: Literal["ELK", "Splunk"] = Field(
+    backend: SiemBackend = Field(
         ...,
         description="Backend type that owns this index.",
     )
@@ -318,7 +342,7 @@ class DiscoveredFieldInfo(BaseModel):
 
 
 class DiscoverIndexFieldsOutput(BaseModel):
-    backend: Literal["ELK", "Splunk"] = Field(..., description="Backend that was queried")
+    backend: SiemBackend = Field(..., description="Backend that was queried")
     index_name: str = Field(..., description="Index that was inspected")
     total_fields: int = Field(..., description="Total number of discovered fields")
     fields: List[DiscoveredFieldInfo] = Field(

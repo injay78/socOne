@@ -33,6 +33,8 @@ from apps.agentic.services.playbooks import create_pending_playbook_run, list_pl
 from apps.playbooks.models import Playbook
 from integrations.cmdb.service import lookup_artifact_context
 from integrations.siem import service as siem_service
+from integrations.siem.aql_guard import AqlRejected
+from integrations.siem.models import AQLQueryInput
 from integrations.siem.models import (
     AdaptiveQueryInput,
     DiscoverIndexFieldsInput,
@@ -823,3 +825,298 @@ def _run_siem_operation(operation, func, input_data):
     except ValueError as exc:
         logger.info("Invalid agent SIEM request", exc_info=True)
         raise ValidationError({"detail": "Invalid SIEM request."}) from exc
+
+
+class SIEMQRadarSearchView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        input_data = AQLQueryInput(**request.data)
+        try:
+            result = run_with_operation_timeout("siem.query.aql", siem_service.execute_aql, input_data)
+        except AqlRejected as exc:
+            # Surface the guard reason so an agent can repair the query and retry.
+            raise ValidationError({"detail": str(exc), "reason": exc.reason}) from exc
+        return agent_response(request, operation="siem.query.aql", data=_dump(result))
+
+
+class QRadarOffenseListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            limit = min(int(request.query_params.get("limit", 50)), 500)
+            offset = max(int(request.query_params.get("offset", 0)), 0)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"detail": "limit and offset must be integers."}) from exc
+
+        offenses = run_with_operation_timeout(
+            "siem.qradar.offenses",
+            siem_service.list_qradar_offenses,
+            filter_expression=request.query_params.get("filter"),
+            offset=offset,
+            limit=limit,
+        )
+        return agent_response(request, operation="siem.qradar.offenses", data={"offenses": offenses})
+
+
+class QRadarOffenseDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, offense_id):
+        with_context = request.query_params.get("with_context", "true").lower() not in {"0", "false", "no"}
+        offense = run_with_operation_timeout(
+            "siem.qradar.offense",
+            siem_service.get_qradar_offense,
+            offense_id,
+            with_context=with_context,
+        )
+        return agent_response(request, operation="siem.qradar.offense", data=offense)
+
+
+class TrellixDetectionListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from integrations.edr.trellix_client import get_trellix_client
+
+        try:
+            limit = min(int(request.query_params.get("limit", 50)), 500)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"detail": "limit must be an integer."}) from exc
+
+        detections = run_with_operation_timeout(
+            "edr.trellix.detections",
+            lambda: get_trellix_client().list_detections(
+                since=request.query_params.get("since"),
+                limit=limit,
+            ),
+        )
+        return agent_response(request, operation="edr.trellix.detections", data={"detections": detections})
+
+
+class TrellixDetectionDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, detection_id):
+        from integrations.edr.trellix_client import get_trellix_client
+
+        client = get_trellix_client()
+        detection = run_with_operation_timeout(
+            "edr.trellix.detection",
+            client.get_detection,
+            detection_id,
+        )
+        context = None
+        if request.query_params.get("with_context", "true").lower() not in {"0", "false", "no"}:
+            context = client.get_detection_context(detection_id)
+        return agent_response(
+            request,
+            operation="edr.trellix.detection",
+            data={"detection": detection, "context": context},
+        )
+
+
+class TrellixHostView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from integrations.edr.trellix_client import get_trellix_client
+
+        hostname = request.query_params.get("hostname")
+        ip = request.query_params.get("ip")
+        agent_id = request.query_params.get("agent_id")
+        if not any([hostname, ip, agent_id]):
+            raise ValidationError({"detail": "hostname, ip or agent_id is required."})
+
+        host = run_with_operation_timeout(
+            "edr.trellix.host",
+            lambda: get_trellix_client().get_host(hostname=hostname, ip=ip, agent_id=agent_id),
+        )
+        return agent_response(request, operation="edr.trellix.host", data={"host": host})
+
+
+class TrellixSearchView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from integrations.edr.trellix_client import get_trellix_client
+        from integrations.edr.trellix_guard import EdrQueryRejected
+
+        query = (request.data or {}).get("query")
+        if not query:
+            raise ValidationError({"detail": "query is required."})
+
+        mode = str((request.data or {}).get("mode", "historical")).lower()
+        if mode not in {"historical", "realtime"}:
+            raise ValidationError({"detail": "mode must be historical or realtime."})
+
+        client = get_trellix_client()
+        host_ids = (request.data or {}).get("host_ids") or []
+        limit = (request.data or {}).get("limit")
+
+        try:
+            if mode == "realtime":
+                rows = run_with_operation_timeout(
+                    "edr.trellix.search",
+                    lambda: client.search_realtime(query, limit=limit, host_ids=host_ids),
+                )
+            else:
+                rows = run_with_operation_timeout(
+                    "edr.trellix.search",
+                    lambda: client.search_historical(
+                        query,
+                        hours=(request.data or {}).get("hours"),
+                        limit=limit,
+                        host_ids=host_ids,
+                    ),
+                )
+        except EdrQueryRejected as exc:
+            raise ValidationError({"detail": str(exc), "reason": exc.reason}) from exc
+
+        return agent_response(
+            request,
+            operation="edr.trellix.search",
+            data={"mode": mode, "row_count": len(rows), "rows": rows},
+        )
+
+
+class CaseTriageView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsBusinessWriterOrReadOnly]
+
+    def get(self, request, case_id):
+        from apps.agentic.models import TriageResult
+        from apps.agentic.serializers import TriageResultSerializer
+
+        case = _find_case(case_id)
+        result = TriageResult.objects.filter(case=case).order_by("-created_at").first()
+        if result is None:
+            raise NotFound("No triage result for this case yet.")
+        return agent_response(
+            request,
+            operation="case.triage",
+            data=TriageResultSerializer(result).data,
+        )
+
+    def post(self, request, case_id):
+        from apps.agentic.triage.service import run_case_triage
+        from apps.agentic.serializers import TriageResultSerializer
+
+        case = _find_case(case_id)
+        result = run_with_operation_timeout(
+            "case.triage.run",
+            run_case_triage,
+            case,
+            trigger="agent_api",
+        )
+        return agent_response(
+            request,
+            operation="case.triage.run",
+            data=TriageResultSerializer(result).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class NotificationTestAgentView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from apps.notifications.telegram import TelegramError, describe_error, send_message
+        from apps.settings.runtime_config import get_telegram_config
+
+        config = get_telegram_config()
+        chat_id = (request.data or {}).get("chat_id")
+        if not chat_id:
+            raise ValidationError({"detail": "chat_id is required."})
+
+        try:
+            send_message(
+                bot_token=config["bot_token"],
+                chat_id=chat_id,
+                text=(request.data or {}).get("text") or "<b>ASP test message</b>",
+                message_thread_id=(request.data or {}).get("message_thread_id") or "",
+            )
+        except TelegramError as exc:
+            return agent_response(
+                request,
+                operation="notification.test",
+                data={"success": False, "detail": describe_error(exc)},
+            )
+        return agent_response(request, operation="notification.test", data={"success": True})
+
+
+class NotificationSendAgentView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from apps.notifications.serializers import NotificationSendSerializer
+        from apps.notifications.service import emit
+
+        serializer = NotificationSendSerializer(data=request.data or {})
+        if not serializer.is_valid():
+            raise ValidationError(serializer.errors)
+
+        queued = emit(
+            serializer.validated_data["event_type"],
+            serializer.validated_data.get("payload") or {},
+        )
+        return agent_response(
+            request,
+            operation="notification.send",
+            data={"queued": len(queued)},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class IntelVerifyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from apps.agentic.ioc.service import verify_bulk, verify_indicator
+
+        data = request.data or {}
+        indicators = data.get("indicators")
+        indicator = data.get("indicator")
+        force = bool(data.get("force"))
+
+        if not indicator and not indicators:
+            raise ValidationError({"detail": "Provide indicator or indicators."})
+
+        if indicators:
+            if not isinstance(indicators, list):
+                raise ValidationError({"detail": "indicators must be a list."})
+            if len(indicators) > 25:
+                raise ValidationError({"detail": "At most 25 indicators per request."})
+            records = run_with_operation_timeout(
+                "intel.verify", verify_bulk, indicators, force=force
+            )
+        else:
+            records = [
+                run_with_operation_timeout(
+                    "intel.verify", verify_indicator, indicator, force=force
+                )
+            ]
+
+        return agent_response(
+            request,
+            operation="intel.verify",
+            data={"results": [_serialize_ioc(item) for item in records]},
+        )
+
+
+def _serialize_ioc(record):
+    return {
+        "indicator_type": record.indicator_type,
+        "indicator_value": record.indicator_value,
+        "verdict": record.verdict,
+        "confidence": record.confidence,
+        "is_internal": record.is_internal,
+        "categories": record.categories,
+        "references": record.references,
+        "sources_used": record.sources_used,
+        "injection_flags": record.injection_flags,
+        "notes_vi": record.notes_vi,
+        "notes_en": record.notes_en,
+        "error": record.error,
+        "expires_at": record.expires_at.isoformat() if record.expires_at else None,
+    }

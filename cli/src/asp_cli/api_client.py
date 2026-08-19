@@ -57,7 +57,7 @@ class AspClient:
         try:
             response = httpx.request(method, url, headers=headers, json=json, files=files, timeout=self.timeout)
         except httpx.HTTPError as exc:
-            raise CliError("network_error", f"Unable to reach ASP server: {exc}", {"url": _redact_url(url)}, EXIT_NETWORK) from exc
+            raise CliError("network_error", f"Unable to reach the server: {exc}", {"url": _redact_url(url)}, EXIT_NETWORK) from exc
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         if self.verbose:

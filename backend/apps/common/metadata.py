@@ -30,6 +30,29 @@ RESOURCE_CONFIGS: tuple[ResourceConfig, ...] = (
     ResourceConfig("playbooks", "Playbooks", "playbooks.Playbook", "/playbooks/", "apps.playbooks.views.PlaybookViewSet"),
     ResourceConfig("knowledge", "Knowledge", "knowledge.Knowledge", "/knowledge/", "apps.knowledge.views.KnowledgeViewSet"),
     ResourceConfig("users", "Users", "accounts.User", "/auth/users/", "apps.accounts.views.UserViewSet", admin_only=True),
+    ResourceConfig(
+        "triage-results",
+        "Đánh giá AI",
+        "agentic.TriageResult",
+        "/triage-results/",
+        "apps.agentic.views.TriageResultViewSet",
+    ),
+    ResourceConfig(
+        "triage-suppressions",
+        "Suppressions",
+        "agentic.TriageSuppression",
+        "/triage-suppressions/",
+        "apps.agentic.views.TriageSuppressionViewSet",
+        admin_only=True,
+    ),
+    ResourceConfig(
+        "notification-messages",
+        "Notifications",
+        "notifications.NotificationOutbox",
+        "/notification-messages/",
+        "apps.notifications.views.NotificationOutboxViewSet",
+        admin_only=True,
+    ),
 )
 
 

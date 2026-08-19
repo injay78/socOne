@@ -58,12 +58,28 @@ def start_case_analysis_job(job):
     return locked
 
 
+# The report speaks the assessment vocabulary; Case.verdict_ai keeps the
+# platform's older, wider vocabulary. Translate rather than widen the model
+# field, so existing dashboards and filters keep working.
+REPORT_VERDICT_TO_CASE_VERDICT = {
+    "true_positive": "True Positive",
+    "benign_true_positive": "Benign",
+    "false_positive": "False Positive",
+    "needs_more_info": "Insufficient Data",
+}
+
+
+def case_verdict_for(report_verdict):
+    key = str(report_verdict or "").strip().lower().replace(" ", "_")
+    return REPORT_VERDICT_TO_CASE_VERDICT.get(key, "Unknown")
+
+
 @transaction.atomic
 def save_case_analysis_record(*, case, record):
     """Persist the full AnalysisRecord and its denormalized Case AI fields."""
     locked_case = case.__class__.objects.select_for_update().get(pk=case.pk)
     report = record.report
-    locked_case.verdict_ai = report.verdict
+    locked_case.verdict_ai = case_verdict_for(report.verdict)
     locked_case.severity_ai = report.severity
     locked_case.impact_ai = report.impact
     locked_case.priority_ai = report.priority

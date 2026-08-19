@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Run the Agentic SOC playbook worker."
+    help = "Run the SOC playbook worker."
 
     def add_arguments(self, parser):
         add_worker_arguments(parser, interval_help="Seconds to sleep when no playbook run is pending.")

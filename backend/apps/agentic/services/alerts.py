@@ -1,10 +1,13 @@
 import hashlib
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django.db import connection, transaction
+from django.utils import timezone
 
 from apps.agentic.services.artifacts import get_or_create_artifact
 from apps.agentic.services.cases import request_case_analysis
+from apps.agentic.services.playbooks import schedule_automatic_playbooks
 from apps.alerts.models import Alert
 from apps.cases.models import Case
 from apps.enrichments.models import Enrichment
@@ -30,11 +33,44 @@ def _lock_case_correlation_uid(correlation_uid):
         cursor.execute("SELECT pg_advisory_xact_lock(%s)", [lock_id])
 
 
+OPEN_CASE_STATUSES = ("New", "In Progress", "On Hold")
+DEFAULT_CORRELATION_WINDOW_HOURS = 24
+
+
+def _correlation_window():
+    from apps.settings.runtime_config import get_correlation_window_hours
+
+    try:
+        return get_correlation_window_hours()
+    except Exception:
+        return DEFAULT_CORRELATION_WINDOW_HOURS
+
+
 def _get_or_create_case(case_defaults, correlation_uid):
+    """Attach to a recent open Case with the same correlation key, else start one.
+
+    The window slides from the existing Case's most recent activity rather than
+    snapping to fixed buckets: two detections minutes apart used to land in
+    different buckets whenever they straddled a boundary, which split one
+    recurring behaviour across several Cases.
+
+    A recurrence after the window, or after the Case was resolved, deliberately
+    opens a new Case instead of reviving a closed investigation.
+    """
     if correlation_uid:
-        existing = Case.objects.filter(correlation_uid=correlation_uid).order_by("created_at").first()
+        cutoff = timezone.now() - timedelta(hours=_correlation_window())
+        existing = (
+            Case.objects.filter(
+                correlation_uid=correlation_uid,
+                status__in=OPEN_CASE_STATUSES,
+                updated_at__gte=cutoff,
+            )
+            .order_by("-updated_at")
+            .first()
+        )
         if existing:
             return existing
+
     case = Case(**case_defaults)
     case.full_clean()
     case.save()
@@ -82,5 +118,7 @@ def create_alert_with_context(
 
         if schedule_analysis:
             request_case_analysis(case=case, trigger=analysis_trigger)
+
+        schedule_automatic_playbooks(case)
 
     return AlertContextResult(case=case, alert=alert)

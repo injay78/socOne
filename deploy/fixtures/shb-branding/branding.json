@@ -1,0 +1,12 @@
+{
+    "product_name": "SHB SOC One",
+    "product_short_name": "SOC One",
+    "primary_color": "#302D7A",
+    "accent_color": "#F37022",
+    "logo_full": "logo-full.png",
+    "logo_compact": "logo-compact.png",
+    "logo_mark": "logo-mark.png",
+    "logo_dark": "logo-compact-dark.png",
+    "favicon": "favicon.ico",
+    "login_background": ""
+}

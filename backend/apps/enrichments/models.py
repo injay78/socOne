@@ -56,6 +56,8 @@ class EnrichmentProvider(models.TextChoices):
     MOCK = "Mock"
     MOCK_TI_PROVIDER = "MockTIProvider"
     ALIENVAULT_OTX = "AlienVaultOTX"
+    ASP_IOC_VERIFY = "ASPIocVerify", "ASP IOC Verify"
+    WEB_MCP = "WebMCP", "Web MCP"
     VIRUSTOTAL = "VirusTotal"
     ABUSEIPDB = "AbuseIPDB"
     URLSCAN_IO = "urlscan.io"

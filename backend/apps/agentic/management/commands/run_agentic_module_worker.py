@@ -7,7 +7,7 @@ DEFAULT_INTERVAL_SECONDS = 3.0
 
 
 class Command(BaseCommand):
-    help = "Run the Agentic SOC module worker."
+    help = "Run the SOC module worker."
 
     def add_arguments(self, parser):
         add_worker_arguments(parser, interval_help="Seconds to sleep when no module stream message is available.")

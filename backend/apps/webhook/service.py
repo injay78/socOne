@@ -1,6 +1,6 @@
 from apps.common.redis_stream import RedisStreamClient
 from apps.settings.runtime_config import get_stream_maxlen
-from apps.webhook.schemas import KibanaPayload, SplunkPayload, WebhookResult
+from apps.webhook.schemas import KibanaPayload, QRadarPayload, SplunkPayload, WebhookResult
 
 
 class WebhookRedisError(RuntimeError):
@@ -20,6 +20,49 @@ def handle_splunk_webhook(payload, *, redis_client=None):
         raise WebhookRedisError(f"Failed to write Redis stream {stream}: {type(exc).__name__}") from exc
 
     return WebhookResult(stream=stream, sent=1, skipped=0, message_ids=[message_id])
+
+
+def handle_qradar_webhook(payload, *, redis_client=None, enrich=None):
+    """Push ingestion for QRadar offences.
+
+    Shares `normalize_offense` with the pull worker, so both paths write an
+    identical payload to a stream named after the detection rule.
+    """
+    from integrations.siem.qradar_normalize import load_offense_with_context, normalize_offense
+
+    parsed = QRadarPayload.model_validate(payload)
+    offense = parsed.resolved_offense()
+
+    if enrich is None:
+        enrich = _qradar_push_enrichment_enabled()
+
+    if enrich:
+        try:
+            normalized = load_offense_with_context(offense["id"])
+        except Exception:
+            normalized = normalize_offense(offense)
+    else:
+        normalized = normalize_offense(offense)
+
+    from integrations.siem.qradar_normalize import resolve_ingest_stream
+
+    stream = resolve_ingest_stream(normalized["stream_name"])
+    redis_client = redis_client or RedisStreamClient()
+    try:
+        message_id = redis_client.send_message(stream, normalized, maxlen=get_stream_maxlen())
+    except Exception as exc:
+        raise WebhookRedisError(f"Failed to write Redis stream {stream}: {type(exc).__name__}") from exc
+
+    return WebhookResult(stream=stream, sent=1, skipped=0, message_ids=[message_id])
+
+
+def _qradar_push_enrichment_enabled():
+    from apps.settings.runtime_config import get_qradar_config
+
+    try:
+        return bool(get_qradar_config()["enabled"])
+    except Exception:
+        return False
 
 
 def handle_kibana_webhook(payload, *, redis_client=None):

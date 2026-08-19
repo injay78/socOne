@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useState} from 'react'
-import {Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Switch, Tabs} from 'antd'
+import {Button, Card, Col, Divider, Form, Input, InputNumber, Row, Select, Space, Switch, Tabs} from 'antd'
 import {message} from '../utils/appMessage'
-import {Layers, Search} from 'lucide-react'
+import {Layers, Search, ShieldAlert} from 'lucide-react'
 import client from '../api/client'
 import IconTabLabel from '../components/IconTabLabel'
 
@@ -295,6 +295,194 @@ function ElkSettings() {
   )
 }
 
+
+interface QRadarConfig {
+  enabled: boolean
+  base_url: string
+  api_token: string
+  api_token_configured?: boolean
+  api_version: string
+  verify_ssl: boolean
+  ca_bundle_path: string
+  search_timeout_seconds: number
+  metadata_timeout_seconds: number
+  max_rows: number
+  default_window_minutes: number
+  max_window_hours: number
+  max_concurrent_searches: number
+  allow_write: boolean
+  poll_enabled: boolean
+  poll_interval_seconds: number
+}
+
+function qradarInitialValues(): QRadarConfig {
+  return {
+    enabled: false,
+    base_url: '',
+    api_token: '',
+    api_version: '22.0',
+    verify_ssl: true,
+    ca_bundle_path: '',
+    search_timeout_seconds: 300,
+    metadata_timeout_seconds: 30,
+    max_rows: 1000,
+    default_window_minutes: 60,
+    max_window_hours: 24,
+    max_concurrent_searches: 2,
+    allow_write: false,
+    poll_enabled: false,
+    poll_interval_seconds: 60,
+  }
+}
+
+function QRadarSettings() {
+  const [form] = Form.useForm<QRadarConfig>()
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+
+  const loadConfig = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data } = await client.get<QRadarConfig>('/settings/siem/qradar/')
+      form.setFieldsValue({ ...qradarInitialValues(), ...data })
+    } catch (error: unknown) {
+      message.error(apiErrorMessage(error, 'Failed to load QRadar configuration'))
+    } finally {
+      setLoading(false)
+    }
+  }, [form])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadConfig()
+  }, [loadConfig])
+
+  const saveConfig = async () => {
+    setSaving(true)
+    try {
+      const values = await form.validateFields()
+      const { data } = await client.patch<QRadarConfig>('/settings/siem/qradar/', values)
+      form.setFieldsValue({ ...qradarInitialValues(), ...data, api_token: values.api_token || '' })
+      message.success('QRadar configuration saved')
+    } catch (error: unknown) {
+      message.error(apiErrorMessage(error, 'Failed to save QRadar configuration'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const testConfig = async () => {
+    setTesting(true)
+    try {
+      const values = await form.validateFields()
+      const { data } = await client.post<SIEMTestResult>('/settings/siem/qradar/test/', values)
+      showTestResult(data)
+    } catch (error: unknown) {
+      message.error(apiErrorMessage(error, 'Failed to test QRadar configuration'))
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <Card title="IBM QRadar" loading={loading}>
+      <Form form={form} layout="vertical" initialValues={qradarInitialValues()}>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="enabled" label="Enabled" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="api_version" label="API Version">
+              <Input placeholder="22.0" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="base_url" label="Base URL">
+              <Input placeholder="https://qradar.internal" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="api_token" label="API Token (SEC header)">
+              <Input.Password autoComplete="new-password" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="verify_ssl" label="Verify TLS" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="ca_bundle_path" label="CA Bundle Path" tooltip="Path inside the container for an internal CA. Leave empty to use the system store.">
+              <Input placeholder="/app/custom/certs/qradar-ca.pem" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Divider titlePlacement="start" plain>Query limits</Divider>
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Item name="max_rows" label="Max rows">
+              <InputNumber min={1} max={100000} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="default_window_minutes" label="Default window (min)">
+              <InputNumber min={1} max={44640} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="max_window_hours" label="Max window (hours)">
+              <InputNumber min={1} max={720} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="search_timeout_seconds" label="Search timeout (s)">
+              <InputNumber min={5} max={3600} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="metadata_timeout_seconds" label="Metadata timeout (s)">
+              <InputNumber min={1} max={600} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="max_concurrent_searches" label="Max concurrent searches" tooltip="Protects the production SIEM. Keep low until QRadar capacity is confirmed.">
+              <InputNumber min={1} max={20} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Divider titlePlacement="start" plain>Ingestion</Divider>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="poll_enabled" label="Poll offences" valuePropName="checked" tooltip="Enables run_qradar_offense_worker. Push ingestion via /api/webhook/qradar/ works independently.">
+              <Switch />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="poll_interval_seconds" label="Poll interval (s)">
+              <InputNumber min={5} max={3600} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="allow_write" label="Allow write operations" valuePropName="checked" tooltip="Off by default. The platform token is read-only; enable only after QRadar grants write permission.">
+              <Switch />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Space>
+          <Button onClick={testConfig} loading={testing}>Test</Button>
+          <Button type="primary" onClick={saveConfig} loading={saving}>Save</Button>
+        </Space>
+      </Form>
+    </Card>
+  )
+}
+
 export default function SIEMSettings() {
   return (
     <div style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
@@ -303,6 +491,7 @@ export default function SIEMSettings() {
         items={[
           { key: 'splunk', label: <IconTabLabel icon={Search}>Splunk</IconTabLabel>, children: <SplunkSettings /> },
           { key: 'elk', label: <IconTabLabel icon={Layers}>ELK</IconTabLabel>, children: <ElkSettings /> },
+          { key: 'qradar', label: <IconTabLabel icon={ShieldAlert}>QRadar</IconTabLabel>, children: <QRadarSettings /> },
         ]}
       />
     </div>

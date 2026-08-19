@@ -7,7 +7,7 @@ import {
     MenuUnfoldOutlined,
     UserOutlined,
 } from '@ant-design/icons'
-import {BookOpenText, BrainCircuit, BriefcaseBusiness, Fingerprint, LayoutDashboard, Puzzle, Settings, Siren, WandSparkles} from 'lucide-react'
+import {BookOpenText, BrainCircuit, BriefcaseBusiness, Fingerprint, LayoutDashboard, Puzzle, ScanSearch, Settings, Siren, WandSparkles} from 'lucide-react'
 import {useAuthStore} from '../stores/auth'
 import {getResourceConfig} from '../config/resources'
 import type {ResourceConfig} from '../types/records'
@@ -17,6 +17,7 @@ import {hasPermission} from '../utils/permissions'
 import PersonalCenterModal from './PersonalCenterModal'
 import UserAvatar from './UserAvatar'
 import {typography} from '../utils/typography'
+import {useBranding} from '../brandingContext'
 
 const { Header, Sider, Content } = Layout
 const lucideIconProps = {size: '1.2em', strokeWidth: 2}
@@ -28,6 +29,7 @@ const breadcrumbMap: Record<string, string> = {
   enrichments: 'Enrichments',
   playbooks: 'Playbooks',
   knowledge: 'Knowledge',
+  triage: 'Đánh giá AI',
   custom: 'Custom',
   dashboard: 'Dashboard',
   system: 'Setting',
@@ -36,6 +38,7 @@ const breadcrumbMap: Record<string, string> = {
 export default function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const branding = useBranding()
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
   const [relatedDetail, setRelatedDetail] = useState<{
@@ -64,7 +67,7 @@ export default function MainLayout() {
   }, [location.pathname])
 
   const selectedKey = (() => {
-    const allKeys = ['/dashboard', '/cases', '/alerts', '/artifacts', '/enrichments', '/playbooks', '/knowledge', '/custom', '/system']
+    const allKeys = ['/dashboard', '/cases', '/alerts', '/artifacts', '/enrichments', '/playbooks', '/knowledge', '/triage', '/custom', '/system']
     if (allKeys.includes(location.pathname)) return location.pathname
     return '/' + (location.pathname.split('/').filter(Boolean)[0] || 'cases')
   })()
@@ -78,13 +81,14 @@ export default function MainLayout() {
     { key: '/enrichments', icon: <WandSparkles {...lucideIconProps} />, label: 'Enrichments' },
     { key: '/playbooks', icon: <BrainCircuit {...lucideIconProps} />, label: 'Playbooks' },
     { key: '/knowledge', icon: <BookOpenText {...lucideIconProps} />, label: 'Knowledge' },
+    { key: '/triage', icon: <ScanSearch {...lucideIconProps} />, label: 'Đánh giá AI' },
     hasPermission(user, 'admin') ? { key: '/custom', icon: <Puzzle {...lucideIconProps} />, label: 'Custom' } : null,
     hasPermission(user, 'admin') ? { key: '/system', icon: <Settings {...lucideIconProps} />, label: 'Setting' } : null,
   ].filter((item): item is NonNullable<typeof item> => Boolean(item))
 
   const pathParts = location.pathname.split('/').filter(Boolean)
   const breadcrumbItems = [
-    { title: 'ASP', onClick: () => navigate('/') },
+    { title: branding.product_short_name, onClick: () => navigate('/') },
     ...pathParts.map((part, i) => ({
       title: breadcrumbMap[part] || part,
       onClick: i < pathParts.length - 1 ? () => navigate('/' + pathParts.slice(0, i + 1).join('/')) : undefined,
@@ -109,11 +113,18 @@ export default function MainLayout() {
       >
         <div style={{ height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #303030' }}>
           {collapsed ? (
-            <img src="/favicon.svg" alt="logo" style={{ width: 20, height: 20 }} />
+            <img src={branding.logo_mark || '/favicon.svg'} alt="" style={{ width: 20, height: 20 }} />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <img src="/favicon.svg" alt="logo" style={{ width: 20, height: 20 }} />
-              <span style={{ ...typography.detailTitle,}}>ASP</span>
+              {/* The sidebar is dark, so prefer the light-text logo variant. */}
+              <img
+                src={branding.logo_dark || branding.logo_compact || branding.logo_mark || '/favicon.svg'}
+                alt=""
+                style={{ height: 20 }}
+              />
+              {branding.logo_dark || branding.logo_compact ? null : (
+                <span style={{ ...typography.detailTitle }}>{branding.product_short_name}</span>
+              )}
             </div>
           )}
         </div>

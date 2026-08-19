@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useState} from 'react'
-import {Button, Card, Form, Input, Space, Switch, Tabs} from 'antd'
+import {Button, Card, Form, Input, InputNumber, Select, Space, Switch, Tabs, Typography} from 'antd'
 import {message} from '../utils/appMessage'
-import {ChartNetwork, SatelliteDish} from 'lucide-react'
+import {ChartNetwork, SatelliteDish, ShieldCheck} from 'lucide-react'
 import client from '../api/client'
 
 interface AlienVaultOTXConfig {
@@ -23,6 +23,17 @@ interface OpenCTIConfig {
   updated_at?: string
 }
 
+interface VirusTotalConfig {
+  enabled: boolean
+  api_keys: string[]
+  api_keys_configured: number
+  base_url: string
+  proxy: string
+  timeout_seconds: number
+  requests_per_minute_per_key: number
+  updated_at?: string
+}
+
 interface ProviderTestResult {
   success: boolean
   detail: string
@@ -36,6 +47,18 @@ function initialOTXValues(): AlienVaultOTXConfig {
     api_key_configured: false,
     base_url: 'https://otx.alienvault.com/api/v1',
     proxy: '',
+  }
+}
+
+function initialVirusTotalValues(): VirusTotalConfig {
+  return {
+    enabled: false,
+    api_keys: [],
+    api_keys_configured: 0,
+    base_url: 'https://www.virustotal.com/api/v3',
+    proxy: '',
+    timeout_seconds: 20,
+    requests_per_minute_per_key: 4,
   }
 }
 
@@ -66,6 +89,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
 export default function ThreatIntelligenceSettings() {
   const [otxForm] = Form.useForm<AlienVaultOTXConfig>()
   const [openctiForm] = Form.useForm<OpenCTIConfig>()
+  const [virustotalForm] = Form.useForm<VirusTotalConfig>()
   const [loading, setLoading] = useState(false)
   const [savingProvider, setSavingProvider] = useState<string | null>(null)
   const [testingProvider, setTestingProvider] = useState<string | null>(null)
@@ -73,22 +97,26 @@ export default function ThreatIntelligenceSettings() {
   const loadConfig = useCallback(async () => {
     setLoading(true)
     try {
-      const [otxResponse, openctiResponse] = await Promise.all([
+      const [otxResponse, openctiResponse, virustotalResponse] = await Promise.all([
         client.get<AlienVaultOTXConfig>('/settings/threat-intel/otx/', {
           params: { reveal_secrets: true },
         }),
         client.get<OpenCTIConfig>('/settings/threat-intel/opencti/', {
           params: { reveal_secrets: true },
         }),
+        client.get<VirusTotalConfig>('/settings/threat-intel/virustotal/', {
+          params: { reveal_secrets: true },
+        }),
       ])
       otxForm.setFieldsValue({ ...initialOTXValues(), ...otxResponse.data })
       openctiForm.setFieldsValue({ ...initialOpenCTIValues(), ...openctiResponse.data })
+      virustotalForm.setFieldsValue({ ...initialVirusTotalValues(), ...virustotalResponse.data })
     } catch (error: unknown) {
       message.error(apiErrorMessage(error, 'Failed to load threat intelligence configuration'))
     } finally {
       setLoading(false)
     }
-  }, [openctiForm, otxForm])
+  }, [openctiForm, otxForm, virustotalForm])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -167,6 +195,42 @@ export default function ThreatIntelligenceSettings() {
     }
   }
 
+  const saveVirusTotalConfig = async () => {
+    setSavingProvider('virustotal')
+    try {
+      const values = await virustotalForm.validateFields()
+      const { data } = await client.patch<VirusTotalConfig>('/settings/threat-intel/virustotal/', {
+        ...values,
+        api_keys: values.api_keys || [],
+        proxy: values.proxy || '',
+      })
+      virustotalForm.setFieldsValue({ ...initialVirusTotalValues(), ...data, api_keys: values.api_keys || [] })
+      message.success('VirusTotal configuration saved')
+    } catch (error: unknown) {
+      message.error(apiErrorMessage(error, 'Failed to save VirusTotal configuration'))
+    } finally {
+      setSavingProvider(null)
+    }
+  }
+
+  const testVirusTotalConfig = async () => {
+    setTestingProvider('virustotal')
+    try {
+      const values = await virustotalForm.validateFields()
+      const { data } = await client.post<ProviderTestResult>('/settings/threat-intel/virustotal/test/', {
+        ...values,
+        api_keys: values.api_keys || [],
+        proxy: values.proxy || '',
+      })
+      if (data.success) message.success(data.detail)
+      else message.error(data.detail)
+    } catch (error: unknown) {
+      message.error(apiErrorMessage(error, 'Failed to test VirusTotal configuration'))
+    } finally {
+      setTestingProvider(null)
+    }
+  }
+
   return (
     <div style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
       <Tabs
@@ -193,6 +257,48 @@ export default function ThreatIntelligenceSettings() {
                   <Space>
                     <Button onClick={testOTXConfig} loading={testingProvider === 'otx'}>Test</Button>
                     <Button type="primary" onClick={saveOTXConfig} loading={savingProvider === 'otx'}>Save</Button>
+                  </Space>
+                </Form>
+              </Card>
+            ),
+          },
+          {
+            key: 'virustotal',
+            label: 'VirusTotal',
+            icon: <ShieldCheck size={16} />,
+            children: (
+              <Card loading={loading}>
+                <Form form={virustotalForm} layout="vertical" initialValues={initialVirusTotalValues()} style={{ maxWidth: 760 }}>
+                  <Form.Item name="enabled" label="Enabled" valuePropName="checked">
+                    <Switch />
+                  </Form.Item>
+                  <Form.Item name="base_url" label="Base URL" rules={[{ required: true }, { type: 'url' }]}>
+                    <Input placeholder="https://www.virustotal.com/api/v3" />
+                  </Form.Item>
+                  <Form.Item
+                    name="api_keys"
+                    label="API Keys"
+                    tooltip="Nhiều key sẽ được xoay vòng theo từng request; key bị 429/401 tự động bỏ qua trong phút hiện tại."
+                  >
+                    <Select mode="tags" open={false} suffixIcon={null} tokenSeparators={[',', ' ', '\n']} placeholder="Dán từng API key rồi nhấn Enter" />
+                  </Form.Item>
+                  <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
+                    Mỗi key free tier chịu được 4 request/phút — thêm nhiều key để tăng thông lượng.
+                  </Typography.Paragraph>
+                  <Space size="large">
+                    <Form.Item name="requests_per_minute_per_key" label="Requests/phút mỗi key">
+                      <InputNumber min={1} max={1000} />
+                    </Form.Item>
+                    <Form.Item name="timeout_seconds" label="Timeout (giây)">
+                      <InputNumber min={5} max={120} />
+                    </Form.Item>
+                  </Space>
+                  <Form.Item name="proxy" label="Proxy">
+                    <Input placeholder="http://127.0.0.1:7890" />
+                  </Form.Item>
+                  <Space>
+                    <Button onClick={testVirusTotalConfig} loading={testingProvider === 'virustotal'}>Test</Button>
+                    <Button type="primary" onClick={saveVirusTotalConfig} loading={savingProvider === 'virustotal'}>Save</Button>
                   </Space>
                 </Form>
               </Card>

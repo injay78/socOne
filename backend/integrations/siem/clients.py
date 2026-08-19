@@ -3,7 +3,8 @@ from functools import lru_cache
 import splunklib.client
 from elasticsearch import Elasticsearch
 
-from apps.settings.runtime_config import get_elk_config, get_splunk_config
+from apps.settings.runtime_config import get_elk_config, get_qradar_config, get_splunk_config
+from integrations.siem.qradar_client import QRadarClient
 
 
 def _require_setting(name, value):
@@ -35,6 +36,15 @@ def get_elk_client():
     )
 
 
+@lru_cache(maxsize=1)
+def get_qradar_client():
+    config = get_qradar_config()
+    _require_setting("QRadar base URL", config["base_url"])
+    _require_setting("QRadar API token", config["api_token"])
+    return QRadarClient(config)
+
+
 def reset_clients():
     get_splunk_service.cache_clear()
     get_elk_client.cache_clear()
+    get_qradar_client.cache_clear()

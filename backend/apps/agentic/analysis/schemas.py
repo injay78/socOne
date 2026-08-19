@@ -40,11 +40,24 @@ class Remediation(BaseModel):
 class InvestigationReport(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
-    verdict: str
+    verdict: str = Field(
+        description="true_positive, benign_true_positive, false_positive or needs_more_info"
+    )
+    false_positive_class: str = Field(
+        default="",
+        description=(
+            "Required when verdict is false_positive: suppressed, verified_legitimate, "
+            "rule_misconfiguration or other"
+        ),
+    )
     severity: str
     impact: str
     priority: str
-    confidence: str
+    confidence: str = Field(description="Unknown, Low, Medium or High")
+    confidence_score: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description="Numeric confidence from 0 to 1. Drives the human-review threshold.",
+    )
     digest: str
     affected_assets: list[AffectedAsset] = Field(default_factory=list)
     evidence_findings: list[EvidenceFinding] = Field(default_factory=list)

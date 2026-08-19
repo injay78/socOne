@@ -10,7 +10,7 @@ import {
     SyncOutlined,
     UserOutlined,
 } from '@ant-design/icons'
-import {BookOpenText, BrainCircuit, BriefcaseBusiness, Fingerprint, Link2, Siren, WandSparkles} from 'lucide-react'
+import {BellOff, BookOpenText, BrainCircuit, BriefcaseBusiness, Fingerprint, Link2, ScanSearch, Send, Siren, WandSparkles} from 'lucide-react'
 import AlertBasicView from '../components/AlertBasicView'
 import ArtifactBasicView from '../components/ArtifactBasicView'
 import CaseBasicView from '../components/CaseBasicView'
@@ -18,6 +18,7 @@ import CaseInvestigationView from '../components/CaseInvestigationView'
 import CaseKnowledgeView from '../components/CaseKnowledgeView'
 import CasePlaybookAction from '../components/CasePlaybookRunModal'
 import CaseRelationshipsView from '../components/CaseRelationshipsView'
+import CaseTriageView from '../components/CaseTriageView'
 import EnrichmentBasicView from '../components/EnrichmentBasicView'
 import KnowledgeBasicView from '../components/KnowledgeBasicView'
 import OverflowTags from '../components/OverflowTags'
@@ -292,6 +293,12 @@ const emptyTabs = {
             label: 'Investigation',
             icon: <FileTextOutlined/>,
             render: (record: RecordRow) => <CaseInvestigationView caseId={String(record.id || '')}/>,
+        },
+        {
+            key: 'triage',
+            label: 'Đánh giá AI',
+            icon: <ScanSearch {...lucideIconProps}/>,
+            render: (record: RecordRow) => <CaseTriageView record={record}/>,
         },
     ],
     alert: [
@@ -960,6 +967,157 @@ export const resourceConfigs: Record<string, ResourceConfig<RecordRow>> = {
                     {label: 'Tags', value: (r) => tags(value(r, 'tags'))},
                     {label: 'Expires At', value: (r) => formatDateTime(String(value(r, 'expires_at') || ''))},
                     {label: 'Body', value: (r) => stringValue(r, 'body')},
+                ]
+            },
+        ],
+        tabs: [],
+    },
+    'triage-results': {
+        key: 'triage-results',
+        label: 'Đánh giá AI',
+        icon: <ScanSearch {...lucideIconProps}/>,
+        endpoint: '/triage-results/',
+        rowKey: 'id',
+        searchPlaceholder: 'Case ID, Title, Reasoning',
+        filters: [
+            {key: 'verdict', label: 'Verdict', valueType: 'select', width: L160},
+            {key: 'needs_human', label: 'Needs Review', valueType: 'select', width: L132},
+        ],
+        advancedFilters: [
+            field('verdict', 'Verdict', 'select'),
+            field('needs_human', 'Needs Review', 'select'),
+            field('confidence', 'Confidence', 'number'),
+            field('prompt_family', 'Prompt Family', 'text'),
+            field('created_at', 'Created Time', 'date'),
+        ],
+        columns: [
+            column('case_readable_id', 'Case', L160, {required: true, defaultVisible: true, fixed: 'left', uppercase: true, openResource: {resourceKey: 'cases', rowId: (record) => value(record, 'case') as string | number | null | undefined}}),
+            column('case_title', 'Title', L360, {defaultVisible: true}),
+            column('verdict', 'AI Verdict', L160, {defaultVisible: true, sorter: true, render: (v) => choiceTag(String(v || ''))}),
+            column('human_verdict', 'Human Verdict', L160, {defaultVisible: true, render: (v) => (v ? choiceTag(String(v)) : emptyValueNode())}),
+            column('confidence', 'Confidence', L132, {defaultVisible: true, sorter: true, render: (v) => (v === null || v === undefined ? emptyValueNode() : <span>{Number(v).toFixed(2)}</span>)}),
+            column('needs_human', 'Needs Review', L132, {defaultVisible: true, render: (v) => (v ? choiceTag('Review', 'orange') : emptyValueNode())}),
+            column('severity_ai', 'Severity', L132, {defaultVisible: true, render: (v) => severityTag(String(v || ''))}),
+            column('mitre_techniques', 'MITRE', L200, {defaultVisible: true, render: (v) => tags(v, 'purple')}),
+            column('prompt_family', 'Family', L132),
+            column('model_name', 'Model', L200),
+            column('created_at', 'Created Time', L160, {defaultVisible: true, sorter: true, render: date('created_at')}),
+        ],
+        editableFields: [],
+        basicSections: [
+            {
+                key: 'verdict', title: 'Verdict', fields: [
+                    {label: 'AI Verdict', value: (r) => choiceTag(String(value(r, 'verdict') || '')), tag: true},
+                    {label: 'Human Verdict', value: (r) => stringValue(r, 'human_verdict')},
+                    {label: 'False Positive Class', value: (r) => stringValue(r, 'false_positive_class')},
+                    {label: 'Confidence', value: (r) => stringValue(r, 'confidence')},
+                    {label: 'Severity', value: (r) => severityTag(String(value(r, 'severity_ai') || '')), tag: true},
+                    {label: 'Impact', value: (r) => stringValue(r, 'impact_ai')},
+                    {label: 'Priority', value: (r) => stringValue(r, 'priority_ai')},
+                    {label: 'Kill Chain', value: (r) => stringValue(r, 'kill_chain_phase')},
+                    {label: 'MITRE Techniques', value: (r) => tags(value(r, 'mitre_techniques'), 'purple')},
+                ]
+            },
+            {
+                key: 'reasoning', title: 'Reasoning', fields: [
+                    {label: 'Tiếng Việt', value: (r) => stringValue(r, 'reasoning_vi')},
+                    {label: 'English', value: (r) => stringValue(r, 'reasoning_en')},
+                ]
+            },
+            {
+                key: 'provenance', title: 'Provenance', fields: [
+                    {label: 'Prompt Family', value: (r) => stringValue(r, 'prompt_family')},
+                    {label: 'Model', value: (r) => stringValue(r, 'model_name')},
+                    {label: 'Tokens In', value: (r) => stringValue(r, 'tokens_in')},
+                    {label: 'Tokens Out', value: (r) => stringValue(r, 'tokens_out')},
+                    {label: 'Latency (ms)', value: (r) => stringValue(r, 'latency_ms')},
+                    {label: 'Error', value: (r) => stringValue(r, 'error')},
+                ]
+            },
+        ],
+        tabs: [],
+    },
+    'triage-suppressions': {
+        key: 'triage-suppressions',
+        label: 'Suppressions',
+        icon: <BellOff {...lucideIconProps}/>,
+        endpoint: '/triage-suppressions/',
+        rowKey: 'id',
+        searchPlaceholder: 'Pattern, Reason',
+        filters: [
+            {key: 'match_type', label: 'Match Type', valueType: 'select', width: L160},
+            {key: 'enabled', label: 'Enabled', valueType: 'select', width: L132},
+        ],
+        advancedFilters: [
+            field('match_type', 'Match Type', 'select'),
+            field('pattern', 'Pattern', 'text'),
+            field('enabled', 'Enabled', 'select'),
+            field('expires_at', 'Expires At', 'date'),
+        ],
+        columns: [
+            column('match_type', 'Match Type', L160, {required: true, defaultVisible: true, fixed: 'left', render: (v) => choiceTag(String(v || ''))}),
+            column('pattern', 'Pattern', L280, {required: true, defaultVisible: true}),
+            column('reason', 'Reason', L360, {defaultVisible: true}),
+            column('expires_at', 'Expires At', L160, {defaultVisible: true, sorter: true, render: date('expires_at')}),
+            column('enabled', 'Enabled', L132, {defaultVisible: true, render: (v) => choiceTag(v ? 'Enabled' : 'Disabled', v ? 'green' : 'default')}),
+            column('created_by_name', 'Created By', L160, {defaultVisible: true}),
+            column('created_at', 'Created Time', L160, {defaultVisible: true, sorter: true, render: date('created_at')}),
+        ],
+        editableFields: [
+            {key: 'pattern', type: 'text'},
+            {key: 'reason', type: 'text'},
+            {key: 'expires_at', type: 'datetime', emptyValue: null},
+        ],
+        basicSections: [
+            {
+                key: 'summary', title: 'Suppression', fields: [
+                    {label: 'Match Type', value: (r) => choiceTag(String(value(r, 'match_type') || '')), tag: true},
+                    {label: 'Pattern', value: (r) => stringValue(r, 'pattern'), mono: true},
+                    {label: 'Reason', value: (r) => stringValue(r, 'reason')},
+                    {label: 'Expires At', value: (r) => formatDateTime(String(value(r, 'expires_at') || ''))},
+                    {label: 'Created By', value: (r) => stringValue(r, 'created_by_name')},
+                ]
+            },
+        ],
+        tabs: [],
+    },
+    'notification-messages': {
+        key: 'notification-messages',
+        label: 'Notifications',
+        icon: <Send {...lucideIconProps}/>,
+        endpoint: '/notification-messages/',
+        rowKey: 'id',
+        searchPlaceholder: 'Event Type, Error',
+        filters: [
+            {key: 'status', label: 'Status', valueType: 'select', width: L132},
+            {key: 'event_type', label: 'Event', valueType: 'select', width: L200},
+        ],
+        advancedFilters: [
+            field('event_type', 'Event', 'select'),
+            field('status', 'Status', 'select'),
+            field('created_at', 'Created Time', 'date'),
+        ],
+        columns: [
+            column('event_type', 'Event', L200, {required: true, defaultVisible: true, fixed: 'left'}),
+            column('status', 'Status', L132, {defaultVisible: true, sorter: true, render: (v) => statusTag(String(v || ''))}),
+            column('destination_name', 'Destination', L160, {defaultVisible: true}),
+            column('aggregated_count', 'Aggregated', L132, {defaultVisible: true}),
+            column('attempts', 'Attempts', L132, {defaultVisible: true}),
+            column('last_error', 'Last Error', L360, {defaultVisible: true}),
+            column('sent_at', 'Sent At', L160, {defaultVisible: true, sorter: true, render: date('sent_at')}),
+            column('created_at', 'Created Time', L160, {defaultVisible: true, sorter: true, render: date('created_at')}),
+        ],
+        editableFields: [],
+        basicSections: [
+            {
+                key: 'summary', title: 'Message', fields: [
+                    {label: 'Event', value: (r) => stringValue(r, 'event_type')},
+                    {label: 'Status', value: (r) => statusTag(String(value(r, 'status') || '')), tag: true},
+                    {label: 'Destination', value: (r) => stringValue(r, 'destination_name')},
+                    {label: 'Attempts', value: (r) => stringValue(r, 'attempts')},
+                    {label: 'Aggregated Count', value: (r) => stringValue(r, 'aggregated_count')},
+                    {label: 'Last Error', value: (r) => stringValue(r, 'last_error')},
+                    {label: 'Rendered Text', value: (r) => stringValue(r, 'rendered_text')},
                 ]
             },
         ],

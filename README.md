@@ -28,39 +28,47 @@
 
 ### Alert Floods, Converged into Actionable Cases
 
-Modules stream SIEM / Webhook alerts, extract IOCs, correlate related signals, and generate Cases, Alerts, and Artifacts so massive log volumes converge into a small number of actionable cases.
+Modules stream SIEM / EDR / Webhook alerts, extract IOCs, correlate related signals by threat and host, and generate Cases, Alerts, and Artifacts so massive log volumes converge into a small number of actionable cases.
 
 ![Alert Floods, Converged into Actionable Cases](img/img_1.png)
 
 ### AI-Powered Investigation, Seconds Not Hours
 
-Compress hours of manual analysis into seconds, automatically producing severity, confidence, impact, priority, verdicts, and structured investigation reports.
+Compress hours of manual analysis into seconds, automatically producing severity, confidence, impact, priority, verdicts, and structured investigation reports — grounded in deterministic facts, CMDB asset context, and evidence that must reference real records.
 
 ![AI-Powered Investigation, Seconds Not Hours](img/img_2.png)
 
-### One Click to Drive Complex Investigations
+### A SOC Playbook Library That Runs Itself
 
-Launch LLM investigation, knowledge extraction, threat intelligence enrichment, and CMDB enrichment around each Case, orchestrating traditional SOAR workflows and AI analysis in the same Playbook system.
+Ship analyst-grade markdown playbooks — phishing, brute force, web attacks, malicious IP/domain connections, abnormal processes and files, cloud incidents, IOC checks — and let the automation engine match every new case to the right playbook by rule keywords and severity. Deterministic routing, configurable rules, a hard per-case budget, and a fallback playbook for everything else.
 
 ![One Click to Drive Complex Investigations](img/img_3.png)
 
 ### Deep Harness Agent Integration
 
-Expose ASP capabilities to Claude Code / Codex / OpenCode and other Harness Agents through the CLI and plugins, enabling agents to operate Cases, search logs, query threat intelligence, and write modules and playbooks directly.
+Expose platform capabilities to Claude Code / Codex / OpenCode and other Harness Agents through the CLI and plugins, enabling agents to operate Cases, search logs, query threat intelligence, and write modules and playbooks directly.
 
 ![Deep Harness Agent Integration](img/img_6.png)
 
-### Multi-SIEM Access, One Investigation Entry Point
+### Multi-SIEM and EDR Access, One Investigation Entry Point
 
-Support Splunk, ELK configuration, unified log search, and Webhook alert ingestion so LLMs, agents, and analysts all work with the same security context.
+Splunk, Elastic, and IBM QRadar for log search and alert ingestion; Trellix EDR for detections and host context. A read-only query guard sanitizes every AI-generated query, and every executed query lands in the audit log — LLMs, agents, and analysts all work with the same security context.
 
 ![Multi-SIEM Access, One Investigation Entry Point](img/img_4.png)
 
 ### Automated Threat Intelligence Enrichment
 
-Automatically enrich IOCs and Artifacts with reputation, pulses, asset, identity, and historical context so every suspicious entity appears with evidence for judgment.
+Automatically enrich IOCs and Artifacts through AlienVault OTX, OpenCTI, and VirusTotal — with a rotating multi-key pool for rate-limited providers — plus asset, identity, and historical context, so every suspicious entity appears with evidence for judgment. IOC verification cross-checks intelligence through intermediary sources and rejects verdicts without real references.
 
 ![Automated Threat Intelligence Enrichment](img/img_5.png)
+
+### Built for Self-Hosted LLMs, Resilient by Design
+
+Bring any OpenAI-compatible endpoint — including aggregator proxies serving many models. Each provider carries a primary model plus fallback models; calls fail over across every provider/model pair with quota-aware cooldowns, token budgets trim input to the model's context window, and structured output survives without native tool calling through prompt-described schemas and JSON repair. An LLM outage never breaks alert ingestion.
+
+### Notifications That Analysts Actually Read
+
+Telegram delivery with deterministic message formatting: verdict-aware headers linking back to the case, a field block rendered from the database (never hallucinated), HTML escaping and secret scrubbing, confidence- and severity-filtered destinations, and mandatory burst aggregation so an alert storm becomes one summary instead of five hundred messages.
 
 ### Knowledge Accumulation, Smarter Over Time
 
@@ -76,7 +84,7 @@ Local / LDAP login, user roles, API Keys, Inbox notifications, and Audit Log pro
 
 ### Low-Cost Adaptation, Highly Flexible Customization
 
-Use Python Modules to adapt new SIEM rules and alert sources, and use Playbooks to orchestrate LLM analysis and automated actions so the platform grows with your security scenarios.
+Use Python Modules to adapt new SIEM rules and alert sources, and use Playbooks to orchestrate LLM analysis and automated actions. White-label branding — product name, colors, logos — is runtime configuration, so the platform ships neutral and takes on your identity at deployment.
 
 ![Low-Cost Adaptation, Highly Flexible Customization](img/img_10.png)
 

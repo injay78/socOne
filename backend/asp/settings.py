@@ -35,7 +35,7 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 ASP_WEB_TIMEOUT = _env_int("ASP_WEB_TIMEOUT", 210)
 SYNC_OPERATION_TIMEOUT_SECONDS = max(1, ASP_WEB_TIMEOUT - 30)
-CONFIG_TEST_TIMEOUT_SECONDS = 10
+CONFIG_TEST_TIMEOUT_SECONDS = _env_int("ASP_CONFIG_TEST_TIMEOUT", 60)
 
 INSTALLED_APPS = [
     "django.contrib.auth",
@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "apps.webhook",
     "apps.agentic",
     "apps.agent_api",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [
@@ -171,8 +172,8 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Agentic SOC Platform API",
-    "DESCRIPTION": "HTTP API for Agentic SOC Platform. External automation integrations should prefer API keys.",
+    "TITLE": "SOC Platform API",
+    "DESCRIPTION": "HTTP API for the SOC platform. External automation integrations should prefer API keys.",
     "VERSION": "0.5.2",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,

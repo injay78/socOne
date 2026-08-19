@@ -8,6 +8,7 @@ import {login} from '../api/auth'
 import {useAuthStore} from '../stores/auth'
 import {getSafeAuthRedirectPath} from '../utils/authRedirect'
 import './Login.css'
+import {useBranding} from '../brandingContext'
 
 export default function Login() {
   const [loading, setLoading] = useState(false)
@@ -26,17 +27,19 @@ export default function Login() {
     finally { setLoading(false) }
   }
 
+  const branding = useBranding()
+
   return (
     <div className="login-page">
       <div className="login-grid" />
-      <section className="login-brand-panel" aria-label="Agentic SOC Platform">
+      <section className="login-brand-panel" aria-label={branding.product_name}>
         <div className="login-brand-lockup">
           <span className="login-logo-frame">
-            <img src="/favicon.svg" alt="" />
+            <img src={branding.logo_full || branding.logo_mark || '/favicon.svg'} alt="" />
           </span>
           <div>
             <div className="login-kicker">Ready for response</div>
-            <h1>Agentic SOC Platform</h1>
+            <h1>{branding.product_name}</h1>
             <p>Security operations workspace</p>
           </div>
         </div>

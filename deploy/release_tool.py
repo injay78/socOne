@@ -577,7 +577,7 @@ def show(manifest: Manifest, output_format: str) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Prepare and validate ASP release files.")
+    parser = argparse.ArgumentParser(description="Prepare and validate release files.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("prepare", help="Update deterministic release files from the manifest.")

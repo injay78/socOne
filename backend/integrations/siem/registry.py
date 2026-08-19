@@ -37,7 +37,7 @@ def _load_yaml_file(yaml_file):
         description=data["description"],
         fields=fields,
     )
-    if index_info.backend not in {"ELK", "Splunk"}:
+    if index_info.backend not in {"ELK", "Splunk", "QRadar"}:
         raise ValueError(f"Unsupported SIEM backend in {yaml_file}: {index_info.backend}")
     return index_info
 

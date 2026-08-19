@@ -1,21 +1,32 @@
 import {useCallback, useEffect, useState} from 'react'
-import {Button, Card, Col, Divider, Form, InputNumber, Row, Select, Space, Tooltip, Typography} from 'antd'
+import {Button, Card, Col, Divider, Form, InputNumber, Row, Select, Space, Switch, Tooltip, Typography} from 'antd'
 import {message} from '../utils/appMessage'
 import {QuestionCircleOutlined} from '@ant-design/icons'
 import client from '../api/client'
 
 interface RuntimeConfig {
-  prompt_language: 'en' | 'zh'
+  prompt_language: 'en' | 'zh' | 'vi'
   stream_maxlen: number
   dashboard_refresh_interval_seconds: 300 | 900 | 1800 | 3600
+  anonymization_enabled: boolean
+  anonymization_fields: string[]
   updated_at?: string
 }
+
+const ANONYMIZATION_FIELD_OPTIONS = [
+  { label: 'Hostname', value: 'host' },
+  { label: 'Username', value: 'user' },
+  { label: 'Internal IP', value: 'internal_ip' },
+  { label: 'Email', value: 'email' },
+]
 
 function initialValues(): RuntimeConfig {
   return {
     prompt_language: 'en',
     stream_maxlen: 10000,
     dashboard_refresh_interval_seconds: 300,
+    anonymization_enabled: false,
+    anonymization_fields: [],
   }
 }
 
@@ -95,7 +106,30 @@ export default function RuntimeSettings() {
                 <Select options={[
                   { label: 'English', value: 'en' },
                   { label: '中文', value: 'zh' },
+                  { label: 'Tiếng Việt', value: 'vi' },
                 ]} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Typography.Text strong>LLM Anonymization</Typography.Text>
+          <Divider style={{ margin: '8px 0 16px' }} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="anonymization_enabled"
+                label={helpLabel('Anonymize LLM Payloads', 'Replaces identifiers with reversible placeholders before sending to the LLM. Leave off when the model is self-hosted inside your network, where real identifiers improve analysis quality.')}
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="anonymization_fields"
+                label={helpLabel('Anonymized Fields', 'Which identifier types are replaced when anonymization is enabled. Empty means all supported types.')}
+              >
+                <Select mode="multiple" allowClear options={ANONYMIZATION_FIELD_OPTIONS} />
               </Form.Item>
             </Col>
           </Row>

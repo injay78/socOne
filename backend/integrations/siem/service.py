@@ -1,4 +1,4 @@
-from integrations.siem.backends import ELKQueryBackend, SplunkQueryBackend
+from integrations.siem.backends import ELKQueryBackend, QRadarQueryBackend, SplunkQueryBackend
 from integrations.siem.models import (
     KeywordSearchInput,
     SchemaIndexSummary,
@@ -67,6 +67,27 @@ def execute_esql(input_data):
     return build_raw_query_output(input_data, backend_result, limit=input_data.limit)
 
 
+def execute_aql(input_data):
+    backend_result = QRadarQueryBackend.execute_aql_query(input_data)
+    return build_raw_query_output(input_data, backend_result, limit=input_data.limit)
+
+
+def list_qradar_offenses(*, filter_expression=None, offset=0, limit=100):
+    from integrations.siem.clients import get_qradar_client
+
+    return get_qradar_client().list_offenses(
+        filter_expression=filter_expression,
+        offset=offset,
+        limit=limit,
+    )
+
+
+def get_qradar_offense(offense_id, *, with_context=True):
+    from integrations.siem.qradar_normalize import load_offense_with_context
+
+    return load_offense_with_context(offense_id, with_context=with_context)
+
+
 def discover_index_fields(input_data):
     return _get_query_backend(input_data.backend).discover_index_fields(
         input_data.index_name,
@@ -77,16 +98,22 @@ def discover_index_fields(input_data):
     )
 
 
+QUERY_BACKENDS = {
+    "ELK": ELKQueryBackend,
+    "Splunk": SplunkQueryBackend,
+    "QRadar": QRadarQueryBackend,
+}
+
+
 def _get_query_backend(backend):
-    if backend == "ELK":
-        return ELKQueryBackend
-    if backend == "Splunk":
-        return SplunkQueryBackend
-    raise ValueError(f"Unsupported backend: {backend}")
+    try:
+        return QUERY_BACKENDS[backend]
+    except KeyError:
+        raise ValueError(f"Unsupported backend: {backend}") from None
 
 
 def get_indices_by_backend():
-    result = {"ELK": [], "Splunk": []}
+    result = {name: [] for name in QUERY_BACKENDS}
     for index_info in list_indices():
         result.setdefault(index_info.backend, []).append(index_info.name)
     return result

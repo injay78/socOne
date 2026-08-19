@@ -1,5 +1,5 @@
 import {useMemo, useState} from 'react'
-import {Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch} from 'antd'
+import {Button, Divider, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch} from 'antd'
 import {message} from '../utils/appMessage'
 import {CheckCircleOutlined, EditOutlined, PlusOutlined, StopOutlined, ThunderboltOutlined} from '@ant-design/icons'
 import client from '../api/client'
@@ -11,12 +11,19 @@ type LLMProviderConfig = Record<string, unknown> & {
   name: string
   base_url: string
   model: string
+  fallback_models: string[]
   api_key: string
   api_key_configured: boolean
   proxy: string
   tags: string[]
   enabled: boolean
   priority: number
+  supports_json_mode: boolean
+  supports_tool_calling: boolean
+  context_window_tokens: number
+  max_output_tokens: number
+  request_timeout_seconds: number
+  max_retries: number
   created_at: string
   updated_at: string
 }
@@ -25,11 +32,18 @@ interface LLMProviderFormValues {
   name: string
   base_url: string
   model: string
+  fallback_models?: string[]
   api_key?: string
   proxy?: string
   tags?: string[]
   enabled: boolean
   priority: number
+  supports_json_mode: boolean
+  supports_tool_calling: boolean
+  context_window_tokens: number
+  max_output_tokens: number
+  request_timeout_seconds: number
+  max_retries: number
 }
 
 interface LLMTestResult {
@@ -60,11 +74,18 @@ function initialValues(): LLMProviderFormValues {
     name: '',
     base_url: '',
     model: '',
+    fallback_models: [],
     api_key: '',
     proxy: '',
     tags: [],
     enabled: true,
     priority: 100,
+    supports_json_mode: false,
+    supports_tool_calling: false,
+    context_window_tokens: 32768,
+    max_output_tokens: 4096,
+    request_timeout_seconds: 120,
+    max_retries: 2,
   }
 }
 
@@ -114,6 +135,7 @@ export default function LLMProviderSettings() {
       const payload = {
         ...values,
         tags: values.tags || [],
+        fallback_models: values.fallback_models || [],
         proxy: values.proxy || '',
         api_key: values.api_key || '',
       }
@@ -173,6 +195,7 @@ export default function LLMProviderSettings() {
       const { data } = await client.post<LLMTestResult>(endpoint, {
         ...values,
         tags: values.tags || [],
+        fallback_models: values.fallback_models || [],
         proxy: values.proxy || '',
         api_key: values.api_key || '',
       })
@@ -264,6 +287,13 @@ export default function LLMProviderSettings() {
           <Form.Item name="model" label="Model" rules={[{ required: true }]}>
             <Input placeholder="gpt-4.1" />
           </Form.Item>
+          <Form.Item
+            name="fallback_models"
+            label="Fallback Models"
+            tooltip="Các model dự phòng trên cùng endpoint, thử lần lượt khi model chính lỗi/hết quota."
+          >
+            <Select mode="tags" open={false} suffixIcon={null} tokenSeparators={[',']} placeholder="claude-sonnet-4-5, gemini-2.5-pro, ..." />
+          </Form.Item>
           <Form.Item name="api_key" label="API Key">
             <Input.Password autoComplete="new-password" />
           </Form.Item>
@@ -282,6 +312,41 @@ export default function LLMProviderSettings() {
             </Form.Item>
             <Form.Item name="priority" label="Priority" rules={[{ required: true }]}>
               <InputNumber min={0} max={100000} />
+            </Form.Item>
+          </Space>
+          <Divider titlePlacement="start" plain>Model capabilities</Divider>
+          <Space size="large" align="start" wrap>
+            <Form.Item
+              name="supports_json_mode"
+              label="JSON mode"
+              valuePropName="checked"
+              tooltip="Enable only if the endpoint accepts response_format={'type':'json_object'}. Leave off for self-hosted models that ignore it."
+            >
+              <Switch />
+            </Form.Item>
+            <Form.Item
+              name="supports_tool_calling"
+              label="Tool calling"
+              valuePropName="checked"
+              tooltip="Informational. No platform skill requires tool calling."
+            >
+              <Switch />
+            </Form.Item>
+          </Space>
+          <Space size="large" align="start" wrap>
+            <Form.Item name="context_window_tokens" label="Context window" rules={[{ required: true }]}>
+              <InputNumber min={1024} max={2000000} step={1024} />
+            </Form.Item>
+            <Form.Item name="max_output_tokens" label="Max output tokens" rules={[{ required: true }]}>
+              <InputNumber min={256} max={200000} step={256} />
+            </Form.Item>
+          </Space>
+          <Space size="large" align="start" wrap>
+            <Form.Item name="request_timeout_seconds" label="Request timeout (s)" rules={[{ required: true }]}>
+              <InputNumber min={5} max={3600} />
+            </Form.Item>
+            <Form.Item name="max_retries" label="Max retries" rules={[{ required: true }]}>
+              <InputNumber min={0} max={5} />
             </Form.Item>
           </Space>
         </Form>

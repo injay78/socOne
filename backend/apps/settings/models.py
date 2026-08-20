@@ -177,6 +177,31 @@ class SiemQRadarConfig(models.Model):
         return instance
 
 
+def default_trellix_read_scopes():
+    """Read and search scopes: devices, activity feed, events, investigation, searches.
+
+    IAM issues a token with fewer scopes rather than refusing one, so an
+    endpoint later fails with a 403 for a reason unrelated to that endpoint.
+    Keeping this list aligned with what the tenant actually granted is what
+    prevents that.
+    """
+    return [
+        "epo.device.r",
+        "soc.edrfd.r",
+        "soc.cfg.r",
+        "mi.user.investigate",
+        "soc.hts.c",
+        "soc.hts.r",
+        "soc.rts.c",
+        "soc.rts.r",
+    ]
+
+
+def default_trellix_action_scopes():
+    """Remediation scopes, requested only while containment is enabled."""
+    return ["soc.act.tg"]
+
+
 class EdrTrellixConfig(models.Model):
     singleton_id = models.PositiveSmallIntegerField(default=1, unique=True, editable=False)
     enabled = models.BooleanField(default=False)
@@ -184,9 +209,20 @@ class EdrTrellixConfig(models.Model):
     api_base_url = models.URLField(max_length=500, blank=True, default="")
     client_id = models.CharField(max_length=255, blank=True, default="")
     client_secret = models.TextField(blank=True, default="")
+    platform_gateway_url = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Gateway for the /edr/v2 platform API, from the Trellix onboarding email, for example https://api.manage.trellix.com. Separate from api_base_url, which serves the legacy /ft/api endpoints.",
+    )
+    platform_api_key = models.TextField(
+        blank=True,
+        default="",
+        help_text="x-api-key for the /edr/v2 platform API. The OAuth bearer token alone is refused with HTTP 403; alerts, real-time search and historical search all require this key.",
+    )
     tenant_id = models.CharField(max_length=255, blank=True, default="")
-    read_scopes = models.JSONField(default=list, blank=True)
-    action_scopes = models.JSONField(default=list, blank=True)
+    read_scopes = models.JSONField(default=default_trellix_read_scopes, blank=True)
+    action_scopes = models.JSONField(default=default_trellix_action_scopes, blank=True)
     timeout_seconds = models.PositiveIntegerField(default=60)
     rate_limit_per_minute = models.PositiveIntegerField(default=120)
     max_rows = models.PositiveIntegerField(default=1000)
@@ -485,3 +521,94 @@ class CustomVariable(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class CorrelationClusteringConfig(models.Model):
+    """Sliding-window clustering of Cases and Alerts into incident clusters."""
+
+    singleton_id = models.PositiveSmallIntegerField(default=1, unique=True, editable=False)
+    enabled = models.BooleanField(default=True)
+    window_hours = models.PositiveIntegerField(
+        default=24,
+        help_text="Length of the sliding window the worker clusters over. SHB shift pattern decides this value (S4 open question 3).",
+    )
+    link_threshold = models.FloatField(
+        default=0.5,
+        help_text="Minimum edge score for membership, between 0 and 1.",
+    )
+    min_shared_entities = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Entities two records must share before an edge is scored at all.",
+    )
+    max_cases_per_run = models.PositiveIntegerField(
+        default=500,
+        help_text="Ceiling on records pulled into one clustering pass, so a backlog cannot stall the worker.",
+    )
+    poll_interval_seconds = models.PositiveIntegerField(default=300)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "setting_correlation_clustering_config"
+
+    def __str__(self):
+        return "Correlation Clustering"
+
+    @classmethod
+    def get_current(cls):
+        instance, _ = cls.objects.get_or_create(singleton_id=1)
+        return instance
+
+
+class ThreatHuntingConfig(models.Model):
+    """Budgets and ceilings for hunt plan generation and execution.
+
+    The concurrency ceiling matters beyond ASP: auto mode is the one feature in
+    this release capable of degrading a production bank SIEM, so its defaults are
+    deliberately conservative.
+    """
+
+    singleton_id = models.PositiveSmallIntegerField(default=1, unique=True, editable=False)
+    enabled = models.BooleanField(default=True)
+    allow_auto_mode = models.BooleanField(
+        default=False,
+        help_text="Master switch for executing hunt queries. While off, every plan stays advisory no matter what is requested (S4 open question 2).",
+    )
+    default_mode = models.CharField(
+        max_length=20,
+        choices=[("advisory", "Advisory"), ("auto", "Auto")],
+        default="advisory",
+    )
+    max_queries_per_plan = models.PositiveIntegerField(default=12)
+    max_plans_per_hour = models.PositiveIntegerField(default=6)
+    max_window_hours = models.PositiveIntegerField(
+        default=24, help_text="Time-range ceiling forced onto every generated query."
+    )
+    max_rows = models.PositiveIntegerField(
+        default=200, help_text="Row ceiling forced onto every generated query."
+    )
+    max_tokens_per_plan = models.PositiveIntegerField(default=60000)
+    max_concurrent_searches = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Concurrent SIEM searches allowed across all running plans (S4 open question 1, shared with S1).",
+    )
+    max_iterations = models.PositiveSmallIntegerField(
+        default=2,
+        help_text="How many times results may go back to the model for a conclusion.",
+    )
+    sample_row_limit = models.PositiveSmallIntegerField(
+        default=10, help_text="Rows stored on a query for display, after secret scrubbing."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "setting_threat_hunting_config"
+
+    def __str__(self):
+        return "Threat Hunting"
+
+    @classmethod
+    def get_current(cls):
+        instance, _ = cls.objects.get_or_create(singleton_id=1)
+        return instance

@@ -321,6 +321,15 @@ def test_qradar_config(config):
     try:
         with httpx.Client(verify=verify, timeout=_config_test_client_timeout(), trust_env=False) as client:
             response = client.get(f"{base_url}/api/system/about", headers=headers)
+            if response.status_code == 403:
+                # /api/system/about needs the ADMIN capability, which a
+                # deliberately read-only service account does not have. Fall back
+                # to the capability ASP actually depends on, so a correct
+                # read-only token is not reported as rejected.
+                response = client.get(
+                    f"{base_url}/api/siem/offenses",
+                    headers={**headers, "Range": "items=0-0"},
+                )
         if response.is_success:
             try:
                 body = response.json()
@@ -330,9 +339,17 @@ def test_qradar_config(config):
                     "detail": "QRadar returned a non-JSON response. Check the base URL path.",
                     "response_preview": _redact(response.text, [api_token])[:500],
                 }
+            # The fallback probe returns a list of offences rather than the
+            # system description, so the release name is not always available.
+            release = body.get("release_name", "unknown") if isinstance(body, dict) else ""
+            detail = (
+                f"QRadar responded successfully (release {release})."
+                if release
+                else "QRadar responded successfully. The token can read offences but is not an admin token."
+            )
             return {
                 "success": True,
-                "detail": f"QRadar responded successfully (release {body.get('release_name', 'unknown')}).",
+                "detail": detail,
                 "response_preview": _redact(str(body), [api_token])[:200],
             }
         if response.status_code in {401, 403}:

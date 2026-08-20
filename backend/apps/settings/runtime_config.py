@@ -177,6 +177,8 @@ def get_trellix_config():
         "enabled": config.enabled,
         "iam_token_url": config.iam_token_url,
         "api_base_url": config.api_base_url.rstrip("/"),
+        "platform_gateway_url": (config.platform_gateway_url or "").rstrip("/"),
+        "platform_api_key": config.platform_api_key,
         "client_id": config.client_id,
         "client_secret": config.client_secret,
         "tenant_id": config.tenant_id,
@@ -232,6 +234,41 @@ def get_ioc_config():
         "ttl_url_hours": config.ttl_url_hours,
         "ttl_hash_hours": config.ttl_hash_hours,
         "ttl_email_hours": config.ttl_email_hours,
+    }
+
+
+@lru_cache(maxsize=1)
+def get_clustering_config():
+    from .models import CorrelationClusteringConfig
+
+    config = CorrelationClusteringConfig.get_current()
+    return {
+        "enabled": config.enabled,
+        "window_hours": config.window_hours,
+        "link_threshold": config.link_threshold,
+        "min_shared_entities": config.min_shared_entities,
+        "max_cases_per_run": config.max_cases_per_run,
+        "poll_interval_seconds": config.poll_interval_seconds,
+    }
+
+
+@lru_cache(maxsize=1)
+def get_hunting_config():
+    from .models import ThreatHuntingConfig
+
+    config = ThreatHuntingConfig.get_current()
+    return {
+        "enabled": config.enabled,
+        "allow_auto_mode": config.allow_auto_mode,
+        "default_mode": config.default_mode,
+        "max_queries_per_plan": config.max_queries_per_plan,
+        "max_plans_per_hour": config.max_plans_per_hour,
+        "max_window_hours": config.max_window_hours,
+        "max_rows": config.max_rows,
+        "max_tokens_per_plan": config.max_tokens_per_plan,
+        "max_concurrent_searches": config.max_concurrent_searches,
+        "max_iterations": config.max_iterations,
+        "sample_row_limit": config.sample_row_limit,
     }
 
 
@@ -353,6 +390,10 @@ def invalidate(group=None):
         get_mcp_configs.cache_clear()
     if group in {None, "ioc"}:
         get_ioc_config.cache_clear()
+    if group in {None, "clustering"}:
+        get_clustering_config.cache_clear()
+    if group in {None, "hunting"}:
+        get_hunting_config.cache_clear()
     if group in {None, "branding"}:
         get_branding_config.cache_clear()
     if group in {None, "ldap"}:

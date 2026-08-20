@@ -15,6 +15,7 @@ from apps.alerts.models import (
 from apps.alerts.models import AlertTactic
 from apps.artifacts.models import ArtifactName, ArtifactRole, ArtifactType
 from apps.cases.models import CaseConfidence, CaseImpact, CasePriority, CaseSeverity
+from apps.enrichments.models import EnrichmentProvider, EnrichmentType
 
 # Trellix tags carry tactics in CamelCase ("DefenseEvasion"); the Alert field
 # accepts exactly one of the spaced MITRE labels ("Defense Evasion").
@@ -128,7 +129,7 @@ class Module(BaseModule):
                 "unmapped": unmapped,
             },
             artifacts=_artifacts(message),
-            enrichments=[],
+            enrichments=_enrichments(message),
         )
 
 
@@ -204,3 +205,135 @@ def _artifacts(message):
         seen.add(key)
         unique.append(item)
     return unique
+
+
+def _joined(values, limit=12):
+    items = [str(item).strip() for item in (values or []) if str(item).strip()]
+    if not items:
+        return ""
+    head = ", ".join(items[:limit])
+    return head if len(items) <= limit else f"{head} (+{len(items) - limit})"
+
+
+def _enrichments(message):
+    """Put the detection context in front of the analyst.
+
+    The Trellix payload already carries the rule that fired, the interpreter
+    chain, file hashes, the MITRE mapping and how noisy the host is, but the
+    module used to drop all of it into `unmapped`, where nothing renders it. A
+    case then showed a pile of artifacts with no account of what happened.
+
+    Trellix does not return a user or a command line on the threat, affected
+    host or detection endpoints, so those are deliberately absent rather than
+    guessed at.
+    """
+    hostname = message.get("hostname") or "unknown host"
+    threat_name = message.get("threat_name") or message.get("rule_name") or "Trellix detection"
+
+    rules = _joined(message.get("rule_names"))
+    techniques = _joined(message.get("mitre_techniques"))
+    tactics = _joined(message.get("mitre_tactics"))
+    interpreter = message.get("interpreter_name") or ""
+    detections_on_host = message.get("detections_on_host") or 0
+
+    lines = [f"{threat_name} on {hostname}."]
+    if rules:
+        lines.append(f"Rules that fired: {rules}.")
+    if interpreter:
+        lines.append(f"Executed through {interpreter}.")
+    scoring = []
+    if message.get("score"):
+        scoring.append(f"threat score {message['score']}")
+    if message.get("rank"):
+        scoring.append(f"detection rank {message['rank']}")
+    if message.get("threat_severity_code") or message.get("detection_severity_code"):
+        scoring.append(
+            f"severity {message.get('threat_severity_code') or '-'} on the threat, "
+            f"{message.get('detection_severity_code') or '-'} on this detection"
+        )
+    if scoring:
+        lines.append("Trellix scoring: " + "; ".join(scoring) + ".")
+    if tactics or techniques:
+        lines.append(f"MITRE: {tactics or '-'} / {techniques or '-'}.")
+    if detections_on_host:
+        lines.append(
+            f"{detections_on_host} detections recorded on this host, "
+            "so judge how unusual this one really is before escalating."
+        )
+    if message.get("threat_status"):
+        lines.append(f"Threat status in Trellix: {message['threat_status']}.")
+
+    detection_data = {
+        "threat_id": message.get("threat_id"),
+        "threat_name": message.get("threat_name"),
+        "threat_type": message.get("threat_type"),
+        "threat_status": message.get("threat_status"),
+        "top_rank_tag": message.get("top_rank_tag"),
+        "aggregation_key": message.get("aggregation_key"),
+        "rule_names": message.get("rule_names") or [],
+        "score": message.get("score"),
+        "rank": message.get("rank"),
+        "severity_threat": message.get("threat_severity_code"),
+        "severity_detection": message.get("detection_severity_code"),
+        "interpreter_name": message.get("interpreter_name"),
+        "interpreter_sha256": message.get("interpreter_sha256"),
+        "interpreter_md5": message.get("interpreter_md5"),
+        "file_sha256": message.get("file_sha256"),
+        "file_sha1": message.get("file_sha1"),
+        "file_md5": message.get("file_md5"),
+        "mitre_tactics": message.get("mitre_tactics") or [],
+        "mitre_techniques": message.get("mitre_techniques") or [],
+        "detections_on_host": detections_on_host,
+        "first_detected": message.get("first_detected"),
+        "last_detected": message.get("last_detected"),
+        "threat_last_detected": message.get("threat_last_detected"),
+        "trace_id": message.get("trace_id"),
+        "console_url": message.get("console_url"),
+    }
+
+    enrichments = [
+        {
+            "name": "Trellix detection context",
+            "type": EnrichmentType.DETECTION,
+            "provider": EnrichmentProvider.OTHER,
+            "uid": f"trellix:detection:{message.get('detection_id')}",
+            "value": (message.get("rule_name") or threat_name)[:500],
+            "desc": "\n".join(lines),
+            "data": {key: val for key, val in detection_data.items() if val not in (None, "", [], 0)},
+        }
+    ]
+
+    host_lines = []
+    if message.get("os"):
+        host_lines.append(f"{hostname} runs {message['os']}.")
+    ips = _joined(message.get("host_ips"), limit=8)
+    if ips:
+        host_lines.append(f"Addresses: {ips}.")
+    if message.get("last_boot_time"):
+        host_lines.append(f"Last booted {message['last_boot_time']}.")
+    if message.get("agent_id"):
+        host_lines.append(f"Trellix agent {message['agent_id']}.")
+
+    if host_lines:
+        enrichments.append(
+            {
+                "name": "Trellix host",
+                "type": EnrichmentType.ASSET,
+                "provider": EnrichmentProvider.OTHER,
+                "uid": f"trellix:host:{message.get('agent_id') or hostname}",
+                "value": str(hostname)[:500],
+                "desc": "\n".join(host_lines),
+                "data": {
+                    "hostname": message.get("hostname"),
+                    "agent_id": message.get("agent_id"),
+                    "os": message.get("os"),
+                    "host_ips": message.get("host_ips") or [],
+                    "host_macs": message.get("host_macs") or [],
+                    "last_boot_time": message.get("last_boot_time"),
+                    "affected_host_id": message.get("affected_host_id"),
+                    "detections_on_host": detections_on_host,
+                },
+            }
+        )
+
+    return enrichments

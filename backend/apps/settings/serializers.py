@@ -745,6 +745,7 @@ class SiemQRadarConfigSerializer(serializers.ModelSerializer):
 
 class EdrTrellixConfigSerializer(serializers.ModelSerializer):
     client_secret_configured = serializers.SerializerMethodField()
+    platform_api_key_configured = serializers.SerializerMethodField()
 
     class Meta:
         model = EdrTrellixConfig
@@ -755,6 +756,9 @@ class EdrTrellixConfigSerializer(serializers.ModelSerializer):
             "client_id",
             "client_secret",
             "client_secret_configured",
+            "platform_gateway_url",
+            "platform_api_key",
+            "platform_api_key_configured",
             "tenant_id",
             "read_scopes",
             "action_scopes",
@@ -770,15 +774,19 @@ class EdrTrellixConfigSerializer(serializers.ModelSerializer):
             "poll_interval_seconds",
             "updated_at",
         )
-        read_only_fields = ("client_secret_configured", "updated_at")
+        read_only_fields = ("client_secret_configured", "platform_api_key_configured", "updated_at")
         extra_kwargs = {
             "client_secret": {"required": False, "allow_blank": True, "trim_whitespace": False},
+            "platform_api_key": {"required": False, "allow_blank": True, "trim_whitespace": False, "write_only": True},
             "read_scopes": {"required": False},
             "action_scopes": {"required": False},
         }
 
     def get_client_secret_configured(self, obj):
         return bool(obj.client_secret)
+
+    def get_platform_api_key_configured(self, obj):
+        return bool(obj.platform_api_key)
 
     def _validate_scopes(self, value):
         if value in (None, ""):

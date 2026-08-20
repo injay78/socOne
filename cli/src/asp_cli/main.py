@@ -68,6 +68,10 @@ notify_app = typer.Typer(no_args_is_help=True, help="Send and test ASP notificat
 edr_trellix_app = typer.Typer(no_args_is_help=True, help="Query Trellix EDR detections, hosts and searches.")
 ti_app = typer.Typer(no_args_is_help=True, help="Query threat intelligence providers.")
 cmdb_app = typer.Typer(no_args_is_help=True, help="Look up asset context from CMDB providers.")
+cluster_app = typer.Typer(no_args_is_help=True, help="Inspect incident clusters produced by the correlation worker.")
+hunt_app = typer.Typer(no_args_is_help=True, help="Generate and drive threat hunting plans.")
+hunt_plan_app = typer.Typer(no_args_is_help=True, help="List, create and inspect hunt plans.")
+hunt_query_app = typer.Typer(no_args_is_help=True, help="Run individual guarded hunt queries.")
 dev_app = typer.Typer(no_args_is_help=True, help="Advanced developer and debugging commands.")
 dev_stream_app = typer.Typer(no_args_is_help=True, help="Inspect Redis streams.")
 
@@ -94,6 +98,10 @@ app.add_typer(edr_app, name="edr")
 app.add_typer(notify_app, name="notify")
 app.add_typer(ti_app, name="ti")
 app.add_typer(cmdb_app, name="cmdb")
+app.add_typer(cluster_app, name="cluster")
+hunt_app.add_typer(hunt_plan_app, name="plan")
+hunt_app.add_typer(hunt_query_app, name="query")
+app.add_typer(hunt_app, name="hunt")
 dev_app.add_typer(dev_stream_app, name="stream")
 app.add_typer(dev_app, name="dev")
 
@@ -1572,7 +1580,7 @@ def _qradar_search(runtime: RuntimeOptions, output: OutputFormat, query: str, li
 
 
 def _qradar_offenses(runtime: RuntimeOptions, output: OutputFormat, limit: int, offset: int, filter_expression: str | None) -> None:
-    payload = _agent_request(runtime, "GET", "/api/agent/v1/siem/qradar/offenses/", params=_clean_params({
+    payload = _agent_request(runtime, "GET", _path_with_query("/api/agent/v1/siem/qradar/offenses/", {
         "limit": limit,
         "offset": offset,
         "filter": filter_expression,
@@ -1584,14 +1592,13 @@ def _qradar_offense(runtime: RuntimeOptions, output: OutputFormat, offense_id: s
     payload = _agent_request(
         runtime,
         "GET",
-        f"/api/agent/v1/siem/qradar/offenses/{offense_id}/",
-        params={"with_context": "true" if with_context else "false"},
+        _path_with_query(f"/api/agent/v1/siem/qradar/offenses/{offense_id}/", {"with_context": "true" if with_context else "false"}),
     )
     _emit_agent_payload(runtime, output, "siem.qradar.offense", payload, _qradar_offense_detail_table)
 
 
 def _trellix_detections(runtime: RuntimeOptions, output: OutputFormat, limit: int, since: str | None) -> None:
-    payload = _agent_request(runtime, "GET", "/api/agent/v1/edr/trellix/detections/", params=_clean_params({
+    payload = _agent_request(runtime, "GET", _path_with_query("/api/agent/v1/edr/trellix/detections/", {
         "limit": limit,
         "since": since,
     }))
@@ -1602,8 +1609,7 @@ def _trellix_detection(runtime: RuntimeOptions, output: OutputFormat, detection_
     payload = _agent_request(
         runtime,
         "GET",
-        f"/api/agent/v1/edr/trellix/detections/{detection_id}/",
-        params={"with_context": "true" if with_context else "false"},
+        _path_with_query(f"/api/agent/v1/edr/trellix/detections/{detection_id}/", {"with_context": "true" if with_context else "false"}),
     )
     _emit_agent_payload(runtime, output, "edr.trellix.detection", payload, _trellix_detection_detail_table)
 
@@ -1611,7 +1617,7 @@ def _trellix_detection(runtime: RuntimeOptions, output: OutputFormat, detection_
 def _trellix_host(runtime: RuntimeOptions, output: OutputFormat, hostname: str | None, ip: str | None, agent_id: str | None) -> None:
     if not any([hostname, ip, agent_id]):
         raise CliError("missing_argument", "Provide --hostname, --ip or --agent-id", {}, EXIT_USAGE)
-    payload = _agent_request(runtime, "GET", "/api/agent/v1/edr/trellix/hosts/", params=_clean_params({
+    payload = _agent_request(runtime, "GET", _path_with_query("/api/agent/v1/edr/trellix/hosts/", {
         "hostname": hostname,
         "ip": ip,
         "agent_id": agent_id,
@@ -1798,3 +1804,181 @@ def _ioc_verify_table(data, _meta) -> Table:
         ["indicator_type", "indicator_value", "verdict", "confidence", "reference_count", "is_internal"],
         rows,
     )
+
+
+@cluster_app.command("list")
+def cluster_list(
+    ctx: typer.Context,
+    status: Annotated[str | None, typer.Option("--status", help="Filter by cluster status, for example open.")] = None,
+    entity: Annotated[str | None, typer.Option("--entity", help="Substring match against the primary entity set.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "cluster.list", output, lambda runtime, out: _cluster_list(runtime, out, status, entity))
+
+
+@cluster_app.command("show")
+def cluster_show(
+    ctx: typer.Context,
+    cluster_id: Annotated[str, typer.Argument(help="Readable cluster id, for example cluster_000001.")],
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "cluster.show", output, lambda runtime, out: _cluster_show(runtime, out, cluster_id))
+
+
+@hunt_plan_app.command("list")
+def hunt_plan_list(
+    ctx: typer.Context,
+    cluster_id: Annotated[str | None, typer.Option("--cluster-id", help="Only plans for this cluster.")] = None,
+    status: Annotated[str | None, typer.Option("--status", help="Filter by plan status.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "hunt.plan.list", output, lambda runtime, out: _hunt_plan_list(runtime, out, cluster_id, status))
+
+
+@hunt_plan_app.command("create")
+def hunt_plan_create(
+    ctx: typer.Context,
+    cluster_id: Annotated[str, typer.Option("--cluster-id", help="Cluster to build the plan from.")],
+    mode: Annotated[str | None, typer.Option("--mode", help="advisory generates queries without running them. auto executes them behind the read-only guards, and is refused unless the server enables it.")] = None,
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "hunt.plan.create", output, lambda runtime, out: _hunt_plan_create(runtime, out, cluster_id, mode))
+
+
+@hunt_plan_app.command("show")
+def hunt_plan_show(
+    ctx: typer.Context,
+    plan_id: Annotated[str, typer.Argument(help="Hunt plan id.")],
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "hunt.plan.show", output, lambda runtime, out: _hunt_plan_show(runtime, out, plan_id))
+
+
+@hunt_query_app.command("run")
+def hunt_query_run(
+    ctx: typer.Context,
+    query_id: Annotated[str, typer.Argument(help="Hunt query id, taken from a plan.")],
+    output: Annotated[OutputFormat | None, typer.Option("--output", help="Output format.")] = None,
+) -> None:
+    run_command(ctx, "hunt.query.run", output, lambda runtime, out: _hunt_query_run(runtime, out, query_id))
+
+
+def _cluster_list(runtime: RuntimeOptions, output: OutputFormat, status: str | None, entity: str | None) -> None:
+    payload = _agent_request(runtime, "GET", _path_with_query("/api/agent/v1/clusters/", {
+        "status": status,
+        "entity": entity,
+    }))
+    _emit_agent_payload(runtime, output, "cluster.list", payload, _cluster_table)
+
+
+def _cluster_show(runtime: RuntimeOptions, output: OutputFormat, cluster_id: str) -> None:
+    payload = _agent_request(runtime, "GET", f"/api/agent/v1/clusters/{cluster_id}/")
+    _emit_agent_payload(runtime, output, "cluster.show", payload, _cluster_detail_table)
+
+
+def _hunt_plan_list(runtime: RuntimeOptions, output: OutputFormat, cluster_id: str | None, status: str | None) -> None:
+    payload = _agent_request(runtime, "GET", _path_with_query("/api/agent/v1/hunt/plans/", {
+        "cluster_id": cluster_id,
+        "status": status,
+    }))
+    _emit_agent_payload(runtime, output, "hunt.plan.list", payload, _hunt_plan_table)
+
+
+def _hunt_plan_create(runtime: RuntimeOptions, output: OutputFormat, cluster_id: str, mode: str | None) -> None:
+    body = {"cluster_id": cluster_id}
+    if mode:
+        body["mode"] = mode
+    payload = _agent_request(runtime, "POST", "/api/agent/v1/hunt/plans/", json=body)
+    _emit_agent_payload(runtime, output, "hunt.plan.create", payload, _hunt_plan_detail_table)
+
+
+def _hunt_plan_show(runtime: RuntimeOptions, output: OutputFormat, plan_id: str) -> None:
+    payload = _agent_request(runtime, "GET", f"/api/agent/v1/hunt/plans/{plan_id}/")
+    _emit_agent_payload(runtime, output, "hunt.plan.show", payload, _hunt_plan_detail_table)
+
+
+def _hunt_query_run(runtime: RuntimeOptions, output: OutputFormat, query_id: str) -> None:
+    payload = _agent_request(runtime, "POST", f"/api/agent/v1/hunt/queries/{query_id}/run/", json={})
+    _emit_agent_payload(runtime, output, "hunt.query.run", payload, _hunt_query_table)
+
+
+def _cluster_table(data, meta) -> Table:
+    rows = data if isinstance(data, list) else [data or {}]
+    return _list_table(
+        "Incident clusters",
+        ["cluster_id", "title", "status", "case_count", "alert_count", "link_score", "window_end"],
+        rows,
+        meta,
+    )
+
+
+def _cluster_detail_table(data, _meta) -> Table:
+    row = data or {}
+    table = Table(title=f"Cluster {row.get('cluster_id', '')}")
+    table.add_column("field")
+    table.add_column("value")
+    for key in ("cluster_id", "title", "status", "case_count", "alert_count", "link_score", "window_start", "window_end"):
+        table.add_row(key, _format_cell(row.get(key)))
+    entities = row.get("primary_entities") or {}
+    for kind in sorted(entities):
+        table.add_row(f"entity:{kind}", _format_cell(", ".join(entities[kind] or [])))
+    for member in (row.get("members") or [])[:25]:
+        table.add_row("member", _format_cell(member.get("case_id") or member.get("alert_id")))
+    return table
+
+
+def _hunt_plan_table(data, meta) -> Table:
+    rows = data if isinstance(data, list) else [data or {}]
+    return _list_table(
+        "Hunt plans",
+        ["id", "cluster_id", "status", "mode", "hypotheses_count", "stop_reason", "created_at"],
+        rows,
+        meta,
+    )
+
+
+def _hunt_plan_detail_table(data, _meta) -> Table:
+    plan = data or {}
+    table = Table(title=f"Hunt plan {plan.get('id', '')}")
+    table.add_column("field")
+    table.add_column("value")
+    for key in ("cluster_id", "status", "mode", "hypotheses_count", "stop_reason", "error"):
+        table.add_row(key, _format_cell(plan.get(key)))
+    for hypothesis in plan.get("hypotheses") or []:
+        table.add_row(
+            f"hypothesis {hypothesis.get('mitre_technique') or '-'}",
+            _format_cell(hypothesis.get("statement")),
+        )
+        for query in hypothesis.get("queries") or []:
+            table.add_row(
+                f"  query {query.get('id', '')[:8]} [{query.get('target')}/{query.get('status')}]",
+                _format_cell(query.get("query_text")),
+            )
+            # A guard rejection is the reason an analyst gets no rows, so it is
+            # printed next to the query rather than hidden in the JSON output.
+            if query.get("guard_rejection_reason"):
+                table.add_row("  rejected", _format_cell(query["guard_rejection_reason"]))
+        for finding in hypothesis.get("findings") or []:
+            table.add_row(f"  finding [{finding.get('conclusion')}]", _format_cell(finding.get("summary")))
+    return table
+
+
+def _hunt_query_table(data, _meta) -> Table:
+    row = data or {}
+    table = Table(title=f"Hunt query {row.get('id', '')}")
+    table.add_column("field")
+    table.add_column("value")
+    for key in (
+        "target",
+        "status",
+        "row_count",
+        "duration_ms",
+        "guard_rejection_reason",
+        "error",
+        "query_text",
+        "purpose",
+        "expected_evidence",
+        "negative_interpretation",
+    ):
+        table.add_row(key, _format_cell(row.get(key)))
+    return table

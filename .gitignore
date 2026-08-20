@@ -44,5 +44,7 @@ node_modules/
 Thumbs.db
 
 .claude/*
+# Skills are product content: every clone should get the hunting workflow.
+!.claude/skills/
 .asp/
 /frontend/.pnpm-store/

@@ -10,6 +10,7 @@ mkdir -p \
     certs \
     custom/data/modules \
     custom/data/playbooks \
+    custom/data/hunting \
     custom/data/siem \
     custom/modules \
     custom/playbooks \

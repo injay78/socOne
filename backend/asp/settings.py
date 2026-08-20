@@ -224,10 +224,25 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-STORAGES = {
-    "default": {
+MEDIA_URL = "/media/"
+MEDIA_ROOT = Path(os.environ.get("ASP_MEDIA_ROOT", BASE_DIR / "media"))
+
+# Attachments live in S3-compatible object storage by default. Deployments that
+# run without such a service set ASP_FILE_STORAGE=filesystem and keep files on disk.
+ASP_FILE_STORAGE = os.environ.get("ASP_FILE_STORAGE", "s3").strip().lower()
+
+if ASP_FILE_STORAGE == "filesystem":
+    DEFAULT_FILE_STORAGE_CONFIG = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": str(MEDIA_ROOT), "base_url": MEDIA_URL},
+    }
+else:
+    DEFAULT_FILE_STORAGE_CONFIG = {
         "BACKEND": "apps.attachments.storage.AttachmentS3Storage",
-    },
+    }
+
+STORAGES = {
+    "default": DEFAULT_FILE_STORAGE_CONFIG,
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },

@@ -1,6 +1,15 @@
 from rest_framework import serializers
 
-from apps.agentic.models import TriageResult, TriageSuppression
+from apps.agentic.models import (
+    HuntFinding,
+    HuntHypothesis,
+    HuntPlan,
+    HuntQuery,
+    IncidentCluster,
+    IncidentClusterMember,
+    TriageResult,
+    TriageSuppression,
+)
 
 
 class TriageResultSerializer(serializers.ModelSerializer):
@@ -101,3 +110,135 @@ class TriageSuppressionSerializer(serializers.ModelSerializer):
         if value <= timezone.now():
             raise serializers.ValidationError("Expiry must be in the future. Suppressions cannot be permanent.")
         return value
+
+
+class IncidentClusterMemberSerializer(serializers.ModelSerializer):
+    case_readable_id = serializers.CharField(source="case.case_id", read_only=True, default="")
+    case_title = serializers.CharField(source="case.title", read_only=True, default="")
+    alert_readable_id = serializers.CharField(source="alert.alert_id", read_only=True, default="")
+
+    class Meta:
+        model = IncidentClusterMember
+        fields = (
+            "id",
+            "case",
+            "case_readable_id",
+            "case_title",
+            "alert",
+            "alert_readable_id",
+            "contribution_score",
+            "joined_at",
+        )
+        read_only_fields = fields
+
+
+class IncidentClusterSerializer(serializers.ModelSerializer):
+    members = IncidentClusterMemberSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = IncidentCluster
+        fields = (
+            "id",
+            "cluster_id",
+            "title",
+            "status",
+            "primary_entities",
+            "window_start",
+            "window_end",
+            "link_score",
+            "case_count",
+            "alert_count",
+            "fingerprint",
+            "merged_into",
+            "lifecycle_events",
+            "members",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+
+class HuntQuerySerializer(serializers.ModelSerializer):
+    executed_by_name = serializers.CharField(
+        source="executed_by.username", read_only=True, default=""
+    )
+
+    class Meta:
+        model = HuntQuery
+        fields = (
+            "id",
+            "target",
+            "query_text",
+            "purpose",
+            "expected_evidence",
+            "negative_interpretation",
+            "status",
+            "row_count",
+            "sample_rows",
+            "duration_ms",
+            "guard_rejection_reason",
+            "executed_at",
+            "executed_by_name",
+            "error",
+            "position",
+        )
+        read_only_fields = fields
+
+
+class HuntFindingSerializer(serializers.ModelSerializer):
+    model_name = serializers.CharField(source="llm_call.model_name", read_only=True, default="")
+
+    class Meta:
+        model = HuntFinding
+        fields = ("id", "conclusion", "summary", "evidence", "model_name", "created_at")
+        read_only_fields = fields
+
+
+class HuntHypothesisSerializer(serializers.ModelSerializer):
+    queries = HuntQuerySerializer(many=True, read_only=True)
+    findings = HuntFindingSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = HuntHypothesis
+        fields = (
+            "id",
+            "statement",
+            "mitre_technique",
+            "rationale",
+            "status",
+            "position",
+            "queries",
+            "findings",
+        )
+        read_only_fields = fields
+
+
+class HuntPlanSerializer(serializers.ModelSerializer):
+    cluster_readable_id = serializers.CharField(source="cluster.cluster_id", read_only=True, default="")
+    cluster_title = serializers.CharField(source="cluster.title", read_only=True, default="")
+    created_by_name = serializers.CharField(source="created_by.username", read_only=True, default="")
+    hypotheses = HuntHypothesisSerializer(many=True, read_only=True)
+    model_name = serializers.CharField(source="llm_call.model_name", read_only=True, default="")
+
+    class Meta:
+        model = HuntPlan
+        fields = (
+            "id",
+            "cluster",
+            "cluster_readable_id",
+            "cluster_title",
+            "status",
+            "mode",
+            "hypotheses_count",
+            "stop_reason",
+            "budget_snapshot",
+            "error",
+            "created_by_name",
+            "model_name",
+            "started_at",
+            "completed_at",
+            "hypotheses",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields

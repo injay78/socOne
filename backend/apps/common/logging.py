@@ -15,6 +15,7 @@ LOG_ROLE_FILES = {
     "agentic-playbook-worker": "agentic-playbook-worker.log",
     "agentic-case-analysis-worker": "agentic-case-analysis-worker.log",
     "agentic-module-worker": "agentic-module-worker.log",
+    "agentic-correlation-worker": "agentic-correlation-worker.log",
     "elk-action-worker": "elk-action-worker.log",
     "dashboard-cache-worker": "dashboard-cache-worker.log",
     "qradar-offense-worker": "qradar-offense-worker.log",

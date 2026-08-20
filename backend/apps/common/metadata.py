@@ -46,6 +46,20 @@ RESOURCE_CONFIGS: tuple[ResourceConfig, ...] = (
         admin_only=True,
     ),
     ResourceConfig(
+        "clusters",
+        "Incident Clusters",
+        "agentic.IncidentCluster",
+        "/clusters/",
+        "apps.agentic.views.IncidentClusterViewSet",
+    ),
+    ResourceConfig(
+        "hunt-plans",
+        "Hunt Plans",
+        "agentic.HuntPlan",
+        "/hunt-plans/",
+        "apps.agentic.views.HuntPlanViewSet",
+    ),
+    ResourceConfig(
         "notification-messages",
         "Notifications",
         "notifications.NotificationOutbox",

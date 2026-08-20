@@ -176,3 +176,101 @@ def serialize_playbook(playbook, *, include_related=False):
     if include_related and playbook.case_id:
         data["case"] = serialize_case(playbook.case, include_related=False)
     return data
+
+
+def serialize_cluster(cluster, *, include_members=False):
+    data = {
+        "cluster_id": cluster.cluster_id,
+        "id": str(cluster.id),
+        "title": cluster.title,
+        "status": cluster.status,
+        "primary_entities": cluster.primary_entities or {},
+        "window_start": dt(cluster.window_start),
+        "window_end": dt(cluster.window_end),
+        "link_score": cluster.link_score,
+        "case_count": cluster.case_count,
+        "alert_count": cluster.alert_count,
+        "fingerprint": cluster.fingerprint,
+        "merged_into": str(cluster.merged_into_id) if cluster.merged_into_id else None,
+        "lifecycle_events": cluster.lifecycle_events or [],
+        "created_at": dt(cluster.created_at),
+        "updated_at": dt(cluster.updated_at),
+    }
+    if include_members:
+        data["members"] = [
+            {
+                "case_id": member.case.case_id if member.case else None,
+                "alert_id": member.alert.alert_id if member.alert else None,
+                "contribution_score": member.contribution_score,
+                "joined_at": dt(member.joined_at),
+            }
+            for member in cluster.members.select_related("case", "alert").all()
+        ]
+    return data
+
+
+def serialize_hunt_query(query):
+    return {
+        "id": str(query.id),
+        "target": query.target,
+        "query_text": query.query_text,
+        "purpose": query.purpose,
+        "expected_evidence": query.expected_evidence,
+        "negative_interpretation": query.negative_interpretation,
+        "status": query.status,
+        "row_count": query.row_count,
+        "sample_rows": query.sample_rows or [],
+        "duration_ms": query.duration_ms,
+        "guard_rejection_reason": query.guard_rejection_reason,
+        "executed_at": dt(query.executed_at),
+        "error": query.error,
+    }
+
+
+def serialize_hunt_finding(finding):
+    return {
+        "id": str(finding.id),
+        "conclusion": finding.conclusion,
+        "summary": finding.summary,
+        "evidence": finding.evidence or [],
+        "created_at": dt(finding.created_at),
+    }
+
+
+def serialize_hunt_hypothesis(hypothesis, *, include_tree=True):
+    data = {
+        "id": str(hypothesis.id),
+        "statement": hypothesis.statement,
+        "mitre_technique": hypothesis.mitre_technique,
+        "rationale": hypothesis.rationale,
+        "status": hypothesis.status,
+        "position": hypothesis.position,
+    }
+    if include_tree:
+        data["queries"] = [serialize_hunt_query(query) for query in hypothesis.queries.all()]
+        data["findings"] = [
+            serialize_hunt_finding(finding) for finding in hypothesis.findings.all()
+        ]
+    return data
+
+
+def serialize_hunt_plan(plan, *, include_tree=False):
+    data = {
+        "id": str(plan.id),
+        "cluster_id": plan.cluster.cluster_id if plan.cluster_id else None,
+        "status": plan.status,
+        "mode": plan.mode,
+        "hypotheses_count": plan.hypotheses_count,
+        "stop_reason": plan.stop_reason,
+        "error": plan.error,
+        "started_at": dt(plan.started_at),
+        "completed_at": dt(plan.completed_at),
+        "created_at": dt(plan.created_at),
+    }
+    if include_tree:
+        data["budget_snapshot"] = plan.budget_snapshot or {}
+        data["hypotheses"] = [
+            serialize_hunt_hypothesis(hypothesis)
+            for hypothesis in plan.hypotheses.prefetch_related("queries", "findings").all()
+        ]
+    return data

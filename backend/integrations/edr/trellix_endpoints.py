@@ -6,6 +6,12 @@ affected host carries the individual detections. Ingestion walks all three.
 Host naming: the tenant is identified by a base domain such as
 `soc.trellix.com`. The API lives on `api.<base>` and the console on `ui.<base>`.
 `api_base_url` accepts either form; `api_host()` normalises it.
+
+There is a second, newer surface: the platform API under `/edr/v2`, which
+lives on its own gateway (`platform_gateway_url`, for example
+https://api.manage.trellix.com) and needs an `x-api-key` header. It is the
+documented source for ingestion, since its alert records carry the user,
+the command line and the process ancestry that the threat endpoints omit.
 """
 
 from urllib.parse import urlparse
@@ -20,17 +26,33 @@ THREAT_DETECTIONS_PATH = "/ft/api/v2/ft/threats/{threat_id}/detections"
 
 SYSTEMS_PATH = "/ft/api/v2/ft/systems"
 
-# Search APIs, gated by the soc.hts.* / soc.rts.* scopes. Not used by ingestion;
-# they back the hunting surface and are unverified on this tenant.
-REALTIME_SEARCH_PATH = "/active-response/api/v1/searches"  # TODO(verify)
-HISTORICAL_SEARCH_PATH = "/historical-search/api/v1/searches"  # TODO(verify)
-SEARCH_STATUS_PATH = "/historical-search/api/v1/searches/{search_id}/status"  # TODO(verify)
-SEARCH_RESULTS_PATH = "/historical-search/api/v1/searches/{search_id}/results"  # TODO(verify)
+# Platform API, taken from the Trellix EDR Product Guide (2026-08-11), reachable
+# on the platform gateway rather than the legacy host and requiring an x-api-key
+# header in addition to the OAuth bearer token. Sending only the bearer token
+# returns 403; sending an invalid key returns 401.
+#
+# These paths replace an earlier set of invented ones. They are documented but
+# not yet exercised on the SHB tenant, because the x-api-key is not configured.
+ALERTS_PATH = "/edr/v2/alerts"
 
-# Containment, inert unless allow_containment is enabled. Unverified.
-ISOLATE_HOST_PATH = "/remediation/api/v1/systems/{agent_id}/isolate"  # TODO(verify)
-KILL_PROCESS_PATH = "/remediation/api/v1/systems/{agent_id}/processes/{process_id}/kill"  # TODO(verify)
-QUARANTINE_FILE_PATH = "/remediation/api/v1/systems/{agent_id}/files/quarantine"  # TODO(verify)
+REALTIME_SEARCH_PATH = "/edr/v2/searches/realtime"
+REALTIME_SEARCH_RESULTS_PATH = "/edr/v2/searches/realtime/{search_id}/results"
+HISTORICAL_SEARCH_PATH = "/edr/v2/searches/historical"
+HISTORICAL_SEARCH_RESULTS_PATH = "/edr/v2/searches/historical/{search_id}/results"
+# Both search families report progress through one queue-jobs resource.
+SEARCH_STATUS_PATH = "/edr/v2/searches/queue-jobs/{job_id}"
+
+INVESTIGATIONS_PATH = "/edr/v2/investigations"
+INVESTIGATION_DETAIL_PATH = "/edr/v2/investigations/{investigation_id}"
+INVESTIGATION_EVIDENCE_PATH = "/edr/v2/investigations/{investigation_id}/evidence"
+
+# Containment, inert unless allow_containment is enabled.
+REMEDIATION_HOST_PATH = "/edr/v2/remediation/host"
+REMEDIATION_SEARCH_PATH = "/edr/v2/remediation/search"
+REMEDIATION_THREAT_PATH = "/edr/v2/remediation/threat"
+REMEDIATION_ACTIONS_PATH = "/edr/v2/remediation/actions"
+REMEDIATION_HOST_INFO_PATH = "/edr/v2/remediation/host-info"
+REMEDIATION_STATUS_PATH = "/edr/v2/remediation/queue-jobs/{job_id}"
 
 CONSOLE_THREAT_URL = (
     "https://ui.{base}/monitoring/#/workspace/72,TOTAL_THREATS,{threat_id}"

@@ -10,6 +10,7 @@ READABLE_ID_SEQUENCES = {
     "enrichment": "readable_id_enrichment_seq",
     "playbook": "readable_id_playbook_seq",
     "knowledge": "readable_id_knowledge_seq",
+    "cluster": "readable_id_cluster_seq",
 }
 
 

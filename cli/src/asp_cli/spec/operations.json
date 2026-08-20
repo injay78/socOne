@@ -760,6 +760,93 @@
         "asp ti verify --indicator 8.8.8.8",
         "asp ti verify --indicator evil[.]example[.]com --output json"
       ]
+    },
+    {
+      "id": "cluster.list",
+      "cli_path": "cluster list",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/clusters/",
+      "permission": "authenticated",
+      "capabilities": [
+        "cluster.list"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp cluster list",
+        "asp cluster list --status open"
+      ]
+    },
+    {
+      "id": "cluster.show",
+      "cli_path": "cluster show",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/clusters/{cluster_id}/",
+      "permission": "authenticated",
+      "capabilities": [
+        "cluster.show"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp cluster show cluster_000001"
+      ]
+    },
+    {
+      "id": "hunt.plan.list",
+      "cli_path": "hunt plan list",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/hunt/plans/",
+      "permission": "authenticated",
+      "capabilities": [
+        "hunt.plan.list"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp hunt plan list",
+        "asp hunt plan list --cluster-id cluster_000001"
+      ]
+    },
+    {
+      "id": "hunt.plan.create",
+      "cli_path": "hunt plan create",
+      "method": "POST",
+      "endpoint": "/api/agent/v1/hunt/plans/",
+      "permission": "business_writer",
+      "capabilities": [
+        "hunt.plan.create"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp hunt plan create --cluster-id cluster_000001",
+        "asp hunt plan create --cluster-id cluster_000001 --mode advisory"
+      ]
+    },
+    {
+      "id": "hunt.plan.show",
+      "cli_path": "hunt plan show",
+      "method": "GET",
+      "endpoint": "/api/agent/v1/hunt/plans/{plan_id}/",
+      "permission": "authenticated",
+      "capabilities": [
+        "hunt.plan.show"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp hunt plan show <plan-id>"
+      ]
+    },
+    {
+      "id": "hunt.query.run",
+      "cli_path": "hunt query run",
+      "method": "POST",
+      "endpoint": "/api/agent/v1/hunt/queries/{query_id}/run/",
+      "permission": "business_writer",
+      "capabilities": [
+        "hunt.query.run"
+      ],
+      "aliases": [],
+      "examples": [
+        "asp hunt query run <query-id>"
+      ]
     }
   ]
 }

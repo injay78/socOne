@@ -10,7 +10,7 @@ import {
     SyncOutlined,
     UserOutlined,
 } from '@ant-design/icons'
-import {BellOff, BookOpenText, BrainCircuit, BriefcaseBusiness, Fingerprint, Link2, ScanSearch, Send, Siren, WandSparkles} from 'lucide-react'
+import {BellOff, BookOpenText, BrainCircuit, BriefcaseBusiness, Crosshair, Fingerprint, Link2, Network, ScanSearch, Send, Siren, WandSparkles} from 'lucide-react'
 import AlertBasicView from '../components/AlertBasicView'
 import ArtifactBasicView from '../components/ArtifactBasicView'
 import CaseBasicView from '../components/CaseBasicView'
@@ -19,6 +19,7 @@ import CaseKnowledgeView from '../components/CaseKnowledgeView'
 import CasePlaybookAction from '../components/CasePlaybookRunModal'
 import CaseRelationshipsView from '../components/CaseRelationshipsView'
 import CaseTriageView from '../components/CaseTriageView'
+import HuntPlanTreeView from '../components/HuntPlanTreeView'
 import EnrichmentBasicView from '../components/EnrichmentBasicView'
 import KnowledgeBasicView from '../components/KnowledgeBasicView'
 import OverflowTags from '../components/OverflowTags'
@@ -971,6 +972,108 @@ export const resourceConfigs: Record<string, ResourceConfig<RecordRow>> = {
             },
         ],
         tabs: [],
+    },
+    'clusters': {
+        key: 'clusters',
+        label: 'Incident Clusters',
+        icon: <Network {...lucideIconProps}/>,
+        endpoint: '/clusters/',
+        rowKey: 'id',
+        searchPlaceholder: 'Cluster ID, Title',
+        filters: [
+            {key: 'status', label: 'Status', valueType: 'select', width: L160},
+        ],
+        advancedFilters: [
+            field('status', 'Status', 'select'),
+            field('link_score', 'Link Score', 'number'),
+            field('case_count', 'Cases', 'number'),
+            field('alert_count', 'Alerts', 'number'),
+            field('created_at', 'Created Time', 'date'),
+        ],
+        columns: [
+            column('cluster_id', 'Cluster', L160, {required: true, defaultVisible: true, fixed: 'left', uppercase: true}),
+            column('title', 'Title', L400, {defaultVisible: true}),
+            column('status', 'Status', L132, {defaultVisible: true, sorter: true, render: (v) => choiceTag(String(v || ''))}),
+            column('case_count', 'Cases', L96, {defaultVisible: true, sorter: true}),
+            column('alert_count', 'Alerts', L96, {defaultVisible: true, sorter: true}),
+            column('link_score', 'Link Score', L120, {defaultVisible: true, sorter: true, render: (v) => (v === null || v === undefined ? emptyValueNode() : <span>{Number(v).toFixed(2)}</span>)}),
+            column('window_start', 'Window Start', L160, {sorter: true, render: date('window_start')}),
+            column('window_end', 'Window End', L160, {defaultVisible: true, sorter: true, render: date('window_end')}),
+            column('created_at', 'Created Time', L160, {sorter: true, render: date('created_at')}),
+        ],
+        editableFields: [],
+        basicSections: [
+            {
+                key: 'cluster', title: 'Cluster', fields: [
+                    {label: 'Cluster ID', value: (r) => stringValue(r, 'cluster_id')},
+                    {label: 'Status', value: (r) => choiceTag(String(value(r, 'status') || '')), tag: true},
+                    {label: 'Cases', value: (r) => stringValue(r, 'case_count')},
+                    {label: 'Alerts', value: (r) => stringValue(r, 'alert_count')},
+                    {label: 'Link Score', value: (r) => stringValue(r, 'link_score')},
+                    {label: 'Window Start', value: (r) => stringValue(r, 'window_start')},
+                    {label: 'Window End', value: (r) => stringValue(r, 'window_end')},
+                    {label: 'Fingerprint', value: (r) => stringValue(r, 'fingerprint')},
+                ]
+            },
+        ],
+        tabs: [],
+    },
+    'hunt-plans': {
+        key: 'hunt-plans',
+        label: 'Hunt Plans',
+        icon: <Crosshair {...lucideIconProps}/>,
+        endpoint: '/hunt-plans/',
+        rowKey: 'id',
+        searchPlaceholder: 'Cluster ID, Title, Stop Reason',
+        filters: [
+            {key: 'status', label: 'Status', valueType: 'select', width: L160},
+            {key: 'mode', label: 'Mode', valueType: 'select', width: L132},
+        ],
+        advancedFilters: [
+            field('status', 'Status', 'select'),
+            field('mode', 'Mode', 'select'),
+            field('created_at', 'Created Time', 'date'),
+        ],
+        columns: [
+            column('cluster_readable_id', 'Cluster', L160, {required: true, defaultVisible: true, fixed: 'left', uppercase: true, openResource: {resourceKey: 'clusters', rowId: (record) => value(record, 'cluster') as string | number | null | undefined}}),
+            column('cluster_title', 'Cluster Title', L360, {defaultVisible: true}),
+            column('status', 'Status', L160, {defaultVisible: true, sorter: true, render: (v) => choiceTag(String(v || ''))}),
+            column('mode', 'Mode', L120, {defaultVisible: true, sorter: true, render: (v) => choiceTag(String(v || ''))}),
+            column('hypotheses_count', 'Hypotheses', L120, {defaultVisible: true}),
+            column('stop_reason', 'Stop Reason', L360, {defaultVisible: true}),
+            column('model_name', 'Model', L200),
+            column('created_by_name', 'Created By', L160),
+            column('created_at', 'Created Time', L160, {defaultVisible: true, sorter: true, render: date('created_at')}),
+        ],
+        editableFields: [],
+        basicSections: [
+            {
+                key: 'plan', title: 'Plan', fields: [
+                    {label: 'Cluster', value: (r) => stringValue(r, 'cluster_readable_id')},
+                    {label: 'Status', value: (r) => choiceTag(String(value(r, 'status') || '')), tag: true},
+                    {label: 'Mode', value: (r) => choiceTag(String(value(r, 'mode') || '')), tag: true},
+                    {label: 'Hypotheses', value: (r) => stringValue(r, 'hypotheses_count')},
+                    {label: 'Stop Reason', value: (r) => stringValue(r, 'stop_reason')},
+                    {label: 'Error', value: (r) => stringValue(r, 'error')},
+                ]
+            },
+            {
+                key: 'provenance', title: 'Provenance', fields: [
+                    {label: 'Model', value: (r) => stringValue(r, 'model_name')},
+                    {label: 'Created By', value: (r) => stringValue(r, 'created_by_name')},
+                    {label: 'Started At', value: (r) => stringValue(r, 'started_at')},
+                    {label: 'Completed At', value: (r) => stringValue(r, 'completed_at')},
+                ]
+            },
+        ],
+        tabs: [
+            {
+                key: 'hunt-tree',
+                label: 'Hypotheses',
+                icon: <Crosshair {...lucideIconProps}/>,
+                render: (record: RecordRow) => <HuntPlanTreeView record={record}/>,
+            },
+        ],
     },
     'triage-results': {
         key: 'triage-results',

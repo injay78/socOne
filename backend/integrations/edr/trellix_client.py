@@ -272,7 +272,7 @@ class TrellixEdrClient:
         created = self._request("POST", path, json_body=body) or {}
         search_id = created.get("searchId") or created.get("id")
 
-        rows = self._poll_search(search_id, limit=guarded.limit) if search_id else []
+        rows = self._poll_search(search_id, limit=guarded.limit, mode=mode) if search_id else []
 
         record_edr_search(
             query=guarded.query,
@@ -283,10 +283,10 @@ class TrellixEdrClient:
         )
         return rows
 
-    def _poll_search(self, search_id, *, limit):
+    def _poll_search(self, search_id, *, limit, mode="historical"):
         deadline = time.monotonic() + SEARCH_MAX_POLL_SECONDS
         while True:
-            status_body = self._request("GET", endpoints.SEARCH_STATUS_PATH.format(search_id=search_id)) or {}
+            status_body = self._request("GET", endpoints.SEARCH_STATUS_PATH.format(job_id=search_id)) or {}
             status = str(status_body.get("status", "")).upper()
             if status in {"COMPLETED", "FINISHED", "SUCCESS"}:
                 break
@@ -296,7 +296,12 @@ class TrellixEdrClient:
                 raise TrellixApiError(f"Trellix search {search_id} did not complete within the timeout.")
             time.sleep(SEARCH_POLL_INTERVAL_SECONDS)
 
-        results = self._request("GET", endpoints.SEARCH_RESULTS_PATH.format(search_id=search_id)) or {}
+        results_path = (
+            endpoints.REALTIME_SEARCH_RESULTS_PATH
+            if mode == "realtime"
+            else endpoints.HISTORICAL_SEARCH_RESULTS_PATH
+        )
+        results = self._request("GET", results_path.format(search_id=search_id)) or {}
         rows = results.get("results") or results.get("items") or []
         return rows[:limit]
 
@@ -323,8 +328,8 @@ class TrellixEdrClient:
             return blocked
         return self._request(
             "POST",
-            endpoints.ISOLATE_HOST_PATH.format(agent_id=agent_id),
-            json_body={"reason": reason},
+            endpoints.REMEDIATION_HOST_PATH,
+            json_body={"action": "isolate", "maGuids": [agent_id], "reason": reason},
         )
 
     def kill_process(self, agent_id, process_id, *, reason=""):
@@ -335,8 +340,13 @@ class TrellixEdrClient:
             return blocked
         return self._request(
             "POST",
-            endpoints.KILL_PROCESS_PATH.format(agent_id=agent_id, process_id=process_id),
-            json_body={"reason": reason},
+            endpoints.REMEDIATION_HOST_PATH,
+            json_body={
+                "action": "killProcess",
+                "maGuids": [agent_id],
+                "processId": process_id,
+                "reason": reason,
+            },
         )
 
     def quarantine_file(self, agent_id, file_hash, *, reason=""):
@@ -347,8 +357,13 @@ class TrellixEdrClient:
             return blocked
         return self._request(
             "POST",
-            endpoints.QUARANTINE_FILE_PATH.format(agent_id=agent_id),
-            json_body={"hash": file_hash, "reason": reason},
+            endpoints.REMEDIATION_HOST_PATH,
+            json_body={
+                "action": "quarantineFile",
+                "maGuids": [agent_id],
+                "hash": file_hash,
+                "reason": reason,
+            },
         )
 
 

@@ -166,3 +166,49 @@ cd asp-compose &&
 ```
 
 The upgrade script updates images, stops the current application services, runs target-release upgrade operations and database migrations, starts services, and runs `doctor.sh`. Upgrades do not roll back automatically; use the full backup when a complete restore is required.
+
+## Custom scripts, prompts and data
+
+`./custom` is bind-mounted over `/app/custom`, so it replaces whatever the image
+carries at that path. Module scripts, playbooks and prompt files therefore have
+to exist in this deployment directory; shipping them inside the image is not
+enough. Copy them from the repository after `init.sh`:
+
+```bash
+cp <repo>/backend/custom/modules/*.py        custom/modules/
+cp -r <repo>/backend/custom/data/hunting     custom/data/
+cp -r <repo>/backend/custom/data/playbooks/* custom/data/playbooks/
+```
+
+Without the Module a source ingests nothing, because the Redis stream has no
+consumer. Without the prompt files the matching feature records a clear failure
+rather than breaking the pipeline: a hunt plan, for example, ends in `failed`
+with `Hunting prompt not found`.
+
+## Outbound TLS on an inspected network
+
+Python validates certificates against the certifi bundle rather than the
+operating system store. On a network that inspects TLS, every outbound call is
+re-signed by the inspection CA and fails with `CERTIFICATE_VERIFY_FAILED`, even
+though a browser on the same host accepts it. Internal appliances with a private
+CA fail the same way.
+
+Build one PEM containing certifi plus the CA chain, place it in `./certs`, and
+set both variables in `.env`:
+
+```dotenv
+SSL_CERT_FILE=/app/certs/ca-bundle.pem
+REQUESTS_CA_BUNDLE=/app/certs/ca-bundle.pem
+```
+
+`./certs` is mounted read-only at `/app/certs` for every backend service.
+
+These variables do not cover every client. `httpx`, which the QRadar and Trellix
+clients use, ignores `SSL_CERT_FILE` and validates against certifi unless it is
+handed an explicit bundle path. The QRadar setting `ca_bundle_path` is that
+explicit path and must be set as well, to `/app/certs/ca-bundle.pem` here.
+
+`ca_bundle_path` is stored in the database, so its value is tied to whichever
+filesystem the process sees. A deployment that reuses a database from another
+host, or moves between a native install and containers, has to update that field
+to match the new path.

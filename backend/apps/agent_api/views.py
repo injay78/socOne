@@ -24,6 +24,12 @@ from apps.cases.services import (
 )
 from apps.comments.models import Comment
 from apps.comments.services import create_record_comment
+from apps.agentic.hunting.service import (
+    HuntBudgetExceeded,
+    execute_query,
+    generate_plan,
+)
+from apps.agentic.models import HuntPlan, HuntQuery, IncidentCluster
 from apps.common.cursor_pagination import paginate_created_at_cursor
 from apps.common.operation_timeout import run_with_operation_timeout
 from apps.common.redis_stream import RedisStreamClient
@@ -51,8 +57,11 @@ from .serializers import (
     serialize_artifact,
     serialize_attachment,
     serialize_case,
+    serialize_cluster,
     serialize_comment,
     serialize_enrichment,
+    serialize_hunt_plan,
+    serialize_hunt_query,
     serialize_knowledge,
     serialize_playbook,
 )
@@ -97,6 +106,12 @@ FOUNDATION_CAPABILITIES = [
     "cmdb.lookup",
     "dev.stream.head",
     "dev.stream.read",
+    "cluster.list",
+    "cluster.show",
+    "hunt.plan.list",
+    "hunt.plan.create",
+    "hunt.plan.show",
+    "hunt.query.run",
 ]
 
 
@@ -1120,3 +1135,114 @@ def _serialize_ioc(record):
         "error": record.error,
         "expires_at": record.expires_at.isoformat() if record.expires_at else None,
     }
+
+
+class ClusterListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        queryset = IncidentCluster.objects.all()
+        if statuses := list_param(request.query_params, "status"):
+            queryset = queryset.filter(status__in=statuses)
+        if entity := request.query_params.get("entity"):
+            queryset = queryset.filter(primary_entities__icontains=entity)
+        page = paginate_created_at_cursor(queryset, request)
+        data = [serialize_cluster(cluster) for cluster in page.results]
+        return agent_response(
+            request, operation="cluster.list", data=data, pagination=pagination_meta(page)
+        )
+
+
+def _find_cluster(cluster_id):
+    cluster = (
+        IncidentCluster.objects.filter(cluster_id=cluster_id).first()
+        or IncidentCluster.objects.filter(pk=cluster_id).first()
+    )
+    if cluster is None:
+        raise NotFound(f"Cluster {cluster_id} was not found.")
+    return cluster
+
+
+class ClusterDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, cluster_id):
+        cluster = _find_cluster(cluster_id)
+        return agent_response(
+            request,
+            operation="cluster.show",
+            data=serialize_cluster(cluster, include_members=True),
+        )
+
+
+class HuntPlanListView(APIView):
+    permission_classes = [IsBusinessWriterOrReadOnly]
+
+    def get(self, request):
+        queryset = HuntPlan.objects.select_related("cluster")
+        if statuses := list_param(request.query_params, "status"):
+            queryset = queryset.filter(status__in=statuses)
+        if cluster_id := request.query_params.get("cluster_id"):
+            queryset = queryset.filter(cluster__cluster_id=cluster_id)
+        page = paginate_created_at_cursor(queryset, request)
+        data = [serialize_hunt_plan(plan) for plan in page.results]
+        return agent_response(
+            request, operation="hunt.plan.list", data=data, pagination=pagination_meta(page)
+        )
+
+    def post(self, request):
+        payload = request.data or {}
+        cluster_id = payload.get("cluster_id")
+        if not cluster_id:
+            raise ValidationError({"cluster_id": "This field is required."})
+        cluster = _find_cluster(cluster_id)
+
+        try:
+            plan = generate_plan(cluster, mode=payload.get("mode"), user=request.user)
+        except HuntBudgetExceeded as exc:
+            return agent_response(
+                request,
+                operation="hunt.plan.create",
+                data={"detail": str(exc)},
+                status=429,
+            )
+        return agent_response(
+            request,
+            operation="hunt.plan.create",
+            data=serialize_hunt_plan(plan, include_tree=True),
+            status=201,
+        )
+
+
+class HuntPlanDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, plan_id):
+        plan = HuntPlan.objects.select_related("cluster").filter(pk=plan_id).first()
+        if plan is None:
+            raise NotFound(f"Hunt plan {plan_id} was not found.")
+        return agent_response(
+            request,
+            operation="hunt.plan.show",
+            data=serialize_hunt_plan(plan, include_tree=True),
+        )
+
+
+class HuntQueryRunView(APIView):
+    """Execute a single guarded query.
+
+    Deliberately explicit rather than implicit: in advisory mode an analyst runs
+    one query at a time after reading its purpose, and the guard verdict comes
+    back on the query record whether it ran or was refused.
+    """
+
+    permission_classes = [IsBusinessWriterOrReadOnly]
+
+    def post(self, request, query_id):
+        query = HuntQuery.objects.filter(pk=query_id).first()
+        if query is None:
+            raise NotFound(f"Hunt query {query_id} was not found.")
+        query = execute_query(query, user=request.user)
+        return agent_response(
+            request, operation="hunt.query.run", data=serialize_hunt_query(query)
+        )

@@ -8,6 +8,10 @@ x-asp-backend: &asp-backend
     - ./custom:/app/custom
     - ./scripts:/opt/asp/scripts:ro
     - ./logs:/app/log
+    # Certificates the backend must trust, not only the ones nginx presents. A
+    # network that inspects TLS re-signs every outbound connection with its own
+    # CA, which Python does not trust by default. See SSL_CERT_FILE in .env.
+    - ./certs:/app/certs:ro
     - custom-python-packages:/opt/asp/custom-packages
     - static-files:/app/staticfiles
   depends_on:
@@ -90,6 +94,11 @@ services:
     <<: *asp-backend
     restart: unless-stopped
     command: ["python", "manage.py", "run_agentic_case_analysis_worker"]
+
+  asp-worker-correlation:
+    <<: *asp-backend
+    restart: unless-stopped
+    command: ["python", "manage.py", "run_agentic_correlation_worker"]
 
   asp-worker-playbook:
     <<: *asp-backend

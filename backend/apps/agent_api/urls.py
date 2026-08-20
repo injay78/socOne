@@ -2,6 +2,11 @@ from django.urls import path
 
 from .views import (
     AgentVersionView,
+    ClusterDetailView,
+    ClusterListView,
+    HuntPlanDetailView,
+    HuntPlanListView,
+    HuntQueryRunView,
     AlertDetailView,
     AlertListView,
     ArtifactDetailView,
@@ -88,4 +93,9 @@ urlpatterns = [
     path("cmdb/lookup/", CMDBLookupView.as_view(), name="agent-api-cmdb-lookup"),
     path("dev/streams/head/", DevStreamHeadView.as_view(), name="agent-api-dev-stream-head"),
     path("dev/streams/message/", DevStreamReadView.as_view(), name="agent-api-dev-stream-read"),
+    path("clusters/", ClusterListView.as_view(), name="agent-api-cluster-list"),
+    path("clusters/<str:cluster_id>/", ClusterDetailView.as_view(), name="agent-api-cluster-detail"),
+    path("hunt/plans/", HuntPlanListView.as_view(), name="agent-api-hunt-plan-list"),
+    path("hunt/plans/<str:plan_id>/", HuntPlanDetailView.as_view(), name="agent-api-hunt-plan-detail"),
+    path("hunt/queries/<str:query_id>/run/", HuntQueryRunView.as_view(), name="agent-api-hunt-query-run"),
 ]

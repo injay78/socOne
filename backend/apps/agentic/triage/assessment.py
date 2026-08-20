@@ -203,7 +203,23 @@ def store_assessment(*, case, report, deterministic, trigger, trimmed_tiers=None
         },
     )
     transaction.on_commit(lambda: _notify(result))
+    transaction.on_commit(lambda: _learn(result))
     return result
+
+
+def _learn(result, *, source=None):
+    """Turn a settled verdict into retrievable knowledge.
+
+    Swallowed like notifications: a knowledge problem must never roll back or
+    block a triage verdict.
+    """
+    from apps.knowledge.curation import capture_from_triage
+    from apps.knowledge.models import KnowledgeSource
+
+    try:
+        capture_from_triage(result, source=source or KnowledgeSource.TRIAGE)
+    except Exception:
+        logger.exception("Failed to capture knowledge for case %s", result.case_id)
 
 
 def _notify(result):

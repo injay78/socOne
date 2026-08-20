@@ -409,6 +409,16 @@ def conclude_hypothesis(hypothesis):
         HuntConclusion.REFUTED: HuntHypothesisStatus.REFUTED,
     }.get(conclusion, HuntHypothesisStatus.INCONCLUSIVE)
     hypothesis.save(update_fields=["status", "updated_at"])
+
+    # A settled hypothesis is worth remembering so the next hunt over the same
+    # entities does not re-ask it. Failure here must not lose the finding.
+    try:
+        from apps.knowledge.curation import capture_from_hunt
+
+        capture_from_hunt(finding)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to capture hunt knowledge for hypothesis %s", hypothesis.id)
+
     return finding
 
 

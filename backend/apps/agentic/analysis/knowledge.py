@@ -81,25 +81,65 @@ def extract_knowledge_keywords(case_payload):
         return fallback_knowledge_keywords(case_payload)
 
 
-def search_knowledge_records(keywords, limit=MAX_KNOWLEDGE_RECORDS):
+def _relevance(record, entity_pairs, keywords):
+    """Rank a candidate. Entity overlap first, because it is the only signal
+    that ties a record to *this* investigation rather than to similar wording.
+
+    Confidence then separates a human correction from a model's guess, and the
+    retrieval count separates knowledge that keeps proving useful from
+    knowledge that is merely recent.
+    """
+    from apps.knowledge.curation import entity_pairs as pairs_of
+
+    overlap = len(pairs_of(record.entities) & entity_pairs) if entity_pairs else 0
+    haystack = f"{record.title} {record.body}".lower()
+    keyword_hits = sum(1 for keyword in keywords if keyword.lower() in haystack)
+    return (
+        overlap,
+        round(record.confidence or 0.0, 3),
+        min(record.hit_count or 0, 50),
+        keyword_hits,
+        record.created_at,
+    )
+
+
+def search_knowledge_records(keywords, limit=MAX_KNOWLEDGE_RECORDS, entities=None):
+    from apps.knowledge.curation import entity_pairs as pairs_of, normalise_entities, record_usage
+
     keywords = normalize_knowledge_keywords(keywords)
-    if not keywords:
+    wanted_pairs = pairs_of(normalise_entities(entities)) if entities else set()
+    if not keywords and not wanted_pairs:
         return []
 
-    keyword_query = Q()
+    match_query = Q()
     for keyword in keywords:
-        keyword_query |= Q(title__icontains=keyword)
-        keyword_query |= Q(body__icontains=keyword)
-        keyword_query |= Q(tags__contains=[keyword])
+        match_query |= Q(title__icontains=keyword)
+        match_query |= Q(body__icontains=keyword)
+        match_query |= Q(tags__contains=[keyword])
+    # An entity match needs no shared wording: knowledge about a host applies to
+    # that host whatever the alert happens to be called.
+    for pair in wanted_pairs:
+        kind, _, value = pair.partition(":")
+        match_query |= Q(**{f"entities__{kind}__contains": [value]})
+
+    if not match_query:
+        return []
 
     valid_time_query = Q(expires_at__isnull=True) | Q(expires_at__gte=timezone.now())
-    queryset = Knowledge.objects.filter(valid_time_query).filter(keyword_query).order_by("-created_at")[:limit]
-    return [serialize_for_ai(record, AI_PROFILE_AGENT) for record in queryset]
+    candidates = list(
+        Knowledge.objects.filter(valid_time_query).filter(match_query).order_by("-created_at")[: limit * 5]
+    )
+    candidates.sort(key=lambda record: _relevance(record, wanted_pairs, keywords), reverse=True)
+    selected = candidates[:limit]
+
+    record_usage([record.knowledge_id for record in selected])
+    return [serialize_for_ai(record, AI_PROFILE_AGENT) for record in selected]
 
 
 def build_knowledge_context(case_payload):
     keywords = extract_knowledge_keywords(case_payload)
-    records = search_knowledge_records(keywords)
+    entities = (case_payload or {}).get("entities") if isinstance(case_payload, dict) else None
+    records = search_knowledge_records(keywords, entities=entities)
     return KnowledgeContext(keywords=keywords, records=records)
 
 

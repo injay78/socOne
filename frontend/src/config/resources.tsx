@@ -917,9 +917,12 @@ export const resourceConfigs: Record<string, ResourceConfig<RecordRow>> = {
         endpoint: '/knowledge/',
         rowKey: 'id',
         searchPlaceholder: 'Knowledge ID, Title, Body, Source',
-        filters: [{key: 'source', label: 'Source', valueType: 'select', width: L132}, {key: 'tags', label: 'Tags', valueType: 'tag', width: L200}],
+        filters: [{key: 'kind', label: 'Kind', valueType: 'select', width: L160}, {key: 'source', label: 'Source', valueType: 'select', width: L132}, {key: 'tags', label: 'Tags', valueType: 'tag', width: L200}],
         advancedFilters: [
             field('knowledge_id', 'Knowledge ID', 'text'),
+            field('kind', 'Kind', 'select'),
+            field('confidence', 'Confidence', 'number'),
+            field('hit_count', 'Retrievals', 'number'),
             field('source', 'Source', 'select'),
             field('tags', 'Tags', 'tag'),
             field('title', 'Title', 'text'),
@@ -931,7 +934,11 @@ export const resourceConfigs: Record<string, ResourceConfig<RecordRow>> = {
         columns: [
             column('knowledge_id', 'Knowledge ID', L160, {required: true, defaultVisible: true, fixed: 'left', openRecord: true, uppercase: true}),
             column('title', 'Title', L360, {required: true, defaultVisible: true, fixed: 'left'}),
+            column('kind', 'Kind', L200, {defaultVisible: true, sorter: true, render: (v) => choiceTag(String(v || ''))}),
             column('source', 'Source', L132, {defaultVisible: true, sorter: true, render: (v) => knowledgeSourceTag(String(v || ''))}),
+            column('confidence', 'Confidence', L120, {defaultVisible: true, sorter: true, render: (v) => (v === null || v === undefined ? emptyValueNode() : <span>{Number(v).toFixed(2)}</span>)}),
+            column('hit_count', 'Retrievals', L120, {defaultVisible: true, sorter: true}),
+            column('last_used_at', 'Last Used', L160, {sorter: true, render: date('last_used_at')}),
             column('case_readable_id', 'Case', L160, {
                 defaultVisible: true,
                 uppercase: true,

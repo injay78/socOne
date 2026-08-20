@@ -311,4 +311,11 @@ def apply_human_verdict(result, *, verdict, user, note=""):
         "human_verdict_note",
         "updated_at",
     ])
+
+    # A human correcting the model is the most valuable lesson the platform
+    # ever sees, so it is captured at a higher confidence than any AI verdict.
+    from apps.agentic.triage.assessment import _learn
+    from apps.knowledge.models import KnowledgeSource
+
+    transaction.on_commit(lambda: _learn(locked, source=KnowledgeSource.HUMAN_OVERRIDE))
     return locked
